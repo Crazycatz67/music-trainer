@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music trainer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%275%27 fill=%27%2338bdf8%27/%3E%3Cpath d=%27M9 17V7l7-2v9%27 fill=%27none%27 stroke=%27%2306202c%27 stroke-width=%272%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
+<script>
+  // Set the theme before the first paint, so a Dawn user never sees a dark page blink past.
+  // shell.js keeps it up to date afterwards. Same storage key as createSettings().
+  (function () {
+    var theme = null;
+    try { theme = (JSON.parse(localStorage.getItem('music-trainer.settings.v1') || '{}') || {}).theme; } catch (e) { /* use the system setting */ }
+    if (theme !== 'dusk' && theme !== 'dawn') theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'dawn' : 'dusk';
+    document.documentElement.dataset.theme = theme;
+  })();
+</script>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/constellation.css">
+<link rel="stylesheet" href="css/range.css">
+<link rel="stylesheet" href="css/voicecheck.css">
+<link rel="stylesheet" href="css/longnote.css">
+<link rel="stylesheet" href="css/ownvoice.css">
+<link rel="stylesheet" href="css/backup.css">
+<link rel="stylesheet" href="css/coach.css">
+<link rel="stylesheet" href="css/sky.css">
+<link rel="stylesheet" href="css/home.css">
+</head>
+<body>
+<a class="skip-link" href="#view">Skip to the screen</a>
+
+<!-- The sky comes first in the markup so Tab reaches Start and the five places before the
+     corner cluster (sky-dome spec section 7). js/app/home.js fills it after the first paint. -->
+<div id="sky-root"></div>
+
+<!-- In place of the old top bar and tabs (sky-dome spec section 4): on the sky, the app mark;
+     inside a place, Back and the place's two names (painted by shell.js); always the corner
+     cluster. -->
+<header class="skybar">
+  <p class="brand">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M8 18V6l8-2v4"/><path d="M8 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+      <path d="M17.5 11l1.1 2.4 2.6.3-1.9 1.8.5 2.6-2.3-1.3-2.3 1.3.5-2.6-1.9-1.8 2.6-.3z"/>
+    </svg>
+    <span class="brand-name">Music trainer</span>
+  </p>
+  <a class="btn btn-secondary btn-small skybar-back" id="sky-back" href="#/sky" hidden></a>
+  <p class="skybar-names" id="sky-names" hidden></p>
+  <div class="corner" role="group" aria-label="Microphone, headphones and settings">
+    <button class="chip chip-button" id="mic-chip" type="button" aria-label="Microphone: open its settings"></button>
+    <button class="chip chip-button" id="headphones-chip" type="button" aria-label="Headphones: change your answer"></button>
+    <button class="icon-button" id="settings-button" type="button" aria-label="Settings"><i data-icon="gear" data-size="24"></i></button>
+  </div>
+</header>
+
+<!-- The same five places as plain links. Shown only on the home address when the sky could
+     not be loaded at all (css/home.css): the site still works, and nothing says "error". -->
+<nav id="plain-places" class="plain-places" aria-label="Places">
+  <a class="card card-link" href="#/today"><div><h2>Tonight</h2><p>Today’s five minutes</p></div></a>
+  <a class="card card-link" href="#/practice"><div><h2>The Ladder</h2><p>Practice</p></div></a>
+  <a class="card card-link" href="#/sing"><div><h2>The Open Sky</h2><p>Free sing</p></div></a>
+  <a class="card card-link" href="#/songs"><div><h2>The Lyre</h2><p>Songs</p></div></a>
+  <a class="card card-link" href="#/progress"><div><h2>Your Sky</h2><p>Progress</p></div></a>
+</nav>
+
+<section class="too-small card" role="note">
+  <h2>Make the window bigger to practise</h2>
+  <p>In a window this small only the pitch meter is shown.</p>
+</section>
+
+<main id="view" tabindex="-1"></main>
+
+<noscript><p style="padding:16px">Music trainer needs JavaScript turned on.</p></noscript>
+
+<script type="module">
+  import { createSettings, initShell, placeholderScreens } from './js/app/shell.js';
+  import { createMicFlow } from './js/app/micflow.js';
+  import { mountFreeSing } from './js/app/freesing.js';
+  import { mountMatchHold } from './js/app/exercises/matchhold.js';
+  import { mountConstellation } from './js/app/exercises/constellation.js';
+  import { mountRangeFinder, rangeSummaryCard } from './js/app/exercises/rangefinder.js';
+  import { mountVoiceCheck } from './js/app/exercises/voicecheck.js';
+  import { mountLongNote } from './js/app/exercises/longnote.js';
+  import { portraitWords, readPortraits } from './js/app/voicecheck.js';
+  import { mountPortrait } from './js/app/portrait.js';
+  import { exerciseRange, figureRange, readRange } from './js/app/range.js';
+  import { mountSetup, setupStart } from './js/app/setup.js';
+  import { createSessions } from './js/app/sessions.js';
+  import { mountCoach, watchRounds } from './js/app/coachcard.js';
+  import { createDaily, dailyPlan, mountToday } from './js/app/daily.js';
+  import { readSaved, SAVED_KEY } from './js/app/figures.js';
+
+  // labs/home-lab.html runs this very page in a frame and hands it a storage of its own and
+  // the sky's test switches, so a test run never reads or writes the owner's saved record.
+  // A page opened normally has no frame, so `lab` is null and nothing here changes.
+  let lab = null;
+  try { lab = (window.frameElement && window.frameElement.mtLab) || null; } catch { /* a frame from elsewhere: not ours */ }
+  let storage = null;
+  try { storage = (lab && lab.storage) || window.localStorage; } catch { /* private mode: settings live for this visit only */ }
+  const settings = createSettings({ storage });
+  let micflow = null;
+  // The practice record. 'mt:take' tells the screen a round was filed (the coach's few
+  // words go under it).
+  const sessions = createSessions({ storage, onTake: (detail) => document.dispatchEvent(new CustomEvent('mt:take', { detail })) });
+  const savedFigures = () => { try { return readSaved(storage && storage.getItem(SAVED_KEY)); } catch { return {}; } };
+  const plan = () => dailyPlan({ range: readRange(storage), figures: savedFigures() });
+  const daily = createDaily({ sessions, navigate: (hash) => { location.hash = hash; }, plan });
+  // In the daily session a screen gets the "Today · step 2 of 3" bar, and starts itself
+  // when the press on Start, Continue or Skip a moment ago led here: that press is the
+  // person's own, so the microphone still opens only because they asked. A plain visit or
+  // a reload never starts anything.
+  // Returns the screen's cleanup. The start waits for the screen's first picture to settle
+  // (config.daily.startAfterMs: started in the same frame, the target band blinked, 0.17
+  // on the flash number in labs/coach-lab.html), and is dropped if the screen is left first,
+  // the page is hidden or a sheet is opened before then (daily.autoStart).
+  const inSession = (view, id, screen) => {
+    const strip = daily.strip(id);
+    if (strip) view.append(strip);
+    const cancel = daily.autoStart(id, () => screen.start());
+    return () => { cancel(); screen.destroy(); };
+  };
+  // "Set up later" when nothing can be saved (private mode): remembered for this visit.
+  let setupPutOff = false;
+  const shell = initShell({
+    settings,
+    storage,
+    // The star dome is the home (owner, 2026-10-12): no top bar, no tabs.
+    home: 'sky',
+    routes: {
+      // First run (no range measured, setup not put off): Today is replaced by the setup
+      // path. Showing either asks for nothing.
+      today(view, ctx) {
+        if (!setupPutOff && setupStart(storage)) { location.replace('#/setup'); return null; }
+        daily.shown('today', null);
+        return mountToday(view, { sessions, daily, plan, rangeCard: rangeSummaryCard(readRange(storage), { noteStyle: settings.get('noteNames') }) });
+      },
+      // Progress, plus the Sky portraits kept by the voice check, newest first.
+      progress(view, ctx) {
+        placeholderScreens.progress(view, ctx);
+        let checks = [];
+        try { checks = readPortraits(storage).checks || []; } catch { /* nothing saved, or storage is closed */ }
+        if (!checks.length) return null;
+        const row = document.createElement('div');
+        row.className = 'card-grid';
+        const title = document.createElement('h2');
+        title.textContent = 'Sky portraits';
+        // In the page before any portrait is drawn: a canvas reads its colours from the
+        // document, and a card not yet in it has none (bugs.md 67).
+        view.append(title, row);
+        // The "Nothing to show yet" card would contradict the portraits under it.
+        const empty = [...view.querySelectorAll('.card')].find((c) => /Nothing to show yet/.test(c.textContent));
+        const when = (p) => Date.parse(p && p.at) || 0;
+        for (const p of [...checks].sort((x, y) => when(y) - when(x))) {
+          const cell = document.createElement('section');
+          cell.className = 'card';
+          row.append(cell);
+          // One damaged portrait must not take the others with it.
+          try {
+            const w = portraitWords(p, { noteStyle: settings.get('noteNames') });
+            mountPortrait(cell, p, { thumb: true, label: w.label });
+            for (const line of [w.date, w.thumb]) {
+              if (!line) continue;
+              const el = document.createElement('p');
+              el.textContent = line;
+              cell.append(el);
+            }
+          } catch { cell.remove(); }
+        }
+        if (!row.children.length) { title.remove(); row.remove(); } else if (empty) empty.remove();
+        return null;
+      },
+      coach(view, ctx) {
+        daily.shown('coach', ctx.param);
+        return mountCoach(view, { sessions, id: ctx.param || null });
+      },
+      setup(view) {
+        daily.shown('setup', null);
+        const screen = mountSetup(view, { shell, micflow, settings, storage, sessions, onLeave: () => { setupPutOff = true; } });
+        return () => screen.destroy();
+      },
+      // #/practice is the list; #/practice/range, #/practice/match, #/practice/voice-check,
+      // #/practice/long-note and #/practice/constellation[/<figure>] are the exercises built so far. Match and hold and
+      // the figures use the measured range and home note when there is one, and their own
+      // defaults when there is not.
+      practice(view, ctx) {
+        const [kind, figureId] = (ctx.param || '').split('/');
+        const saved = readRange(storage);
+        daily.shown('practice', ctx.param);
+        if (kind === 'range') {
+          // Showing it asks for nothing: the microphone waits for Start.
+          const screen = mountRangeFinder(view, { shell, micflow, settings, storage, sessions });
+          return inSession(view, 'range', screen);
+        }
+        if (kind === 'constellation') {
+          // Showing it asks for nothing: the microphone waits for "Hear the shape".
+          const screen = mountConstellation(view, { shell, micflow, settings, figureId: figureId || null, range: figureRange(saved), sessions });
+          // The picker (no figure named) has nothing to start.
+          if (figureId && screen.start) return inSession(view, 'constellation', screen);
+          return () => screen.destroy();
+        }
+        if (kind === 'voice-check') {
+          // Showing it asks for nothing: the microphone waits for the singer's own press.
+          const screen = mountVoiceCheck(view, { shell, micflow, settings, storage, sessions });
+          return () => screen.destroy();
+        }
+        if (kind === 'long-note') {
+          // Showing it asks for nothing: the microphone waits for the singer's own press.
+          const screen = mountLongNote(view, { shell, micflow, settings, storage, sessions, range: exerciseRange(saved) });
+          return () => screen.destroy();
+        }
+        if (ctx.param !== 'match') return placeholderScreens.practice(view, ctx);
+        // Two seconds, the spec's first-week hold, until Progress can tell week one from later.
+        const screen = mountMatchHold(view, { shell, micflow, settings, holdMs: 2000, range: exerciseRange(saved), sessions });
+        return inSession(view, 'matchhold', screen);
+      },
+      sing(view) {
+        daily.shown('sing', null);
+        const screen = mountFreeSing(view, { shell, micflow, settings, sessions });
+        return () => screen.destroy();
+      },
+    },
+  });
+  // Nothing here opens the microphone: micflow waits for a press on a screen.
+  micflow = createMicFlow({ shell, settings, chipEl: document.getElementById('mic-chip') });
+  watchRounds(shell.view);
+  shell.start();
+
+  // The sky, after the first screen is up. Loaded on its own so that nothing it needs (this
+  // module, the dome, three.js) can blank the page: if it fails, the screens work as they
+  // are and the plain links above stand in for the sky. It opens no microphone and plays
+  // no sound.
+  const doc = document.documentElement;
+  const gl = (lab && lab.gl) || new URLSearchParams(location.search).get('gl') || 'auto';
+  import(lab && lab.homeUrl ? lab.homeUrl : './js/app/home.js').then(({ mountHome }) => {
+    const home = mountHome(document.getElementById('sky-root'), {
+      shell, sessions, daily, plan, micflow, storage, gl: ['off', 'soft'].includes(gl) ? gl : 'auto',
+      startSetup: () => !setupPutOff && setupStart(storage),
+      onFrame: lab && lab.onFrame,
+    });
+    if (lab) lab.app = { shell, home, micflow, daily, sessions };
+  }).catch((err) => {
+    doc.dataset.sky = 'failed';
+    if (lab) lab.failed = String(err && err.message || err);
+  });
+</script>
+</body>
+</html>

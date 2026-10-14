@@ -1,0 +1,467 @@
+/* app.css — every screen's styles. Colours, sizes and timings come from tokens.css by name;
+   no raw colour value belongs in this file (docs/design/STYLE.md, acceptance check 1).
+   Order: base · top bar · buttons, chips, cards · sheet, toast, banner · form parts ·
+   pitch stage · read-out (HUD) · screens · small windows · calm motion. */
+
+/* ---------------------------------------------------------------- base */
+*, *::before, *::after { box-sizing: border-box; }
+/* Components set their own display, which would otherwise beat the hidden attribute. */
+[hidden] { display: none !important; }
+html { font-size: 16px; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: var(--t-body); }
+h1, h2, h3, p, ul, ol { margin: 0; }
+h1 { font: var(--t-h1); }
+h2 { font: var(--t-h2); }
+h3 { font: var(--t-body); font-weight: 600; }
+ul, ol { padding-left: var(--s5); }
+button, input, select { font: inherit; color: inherit; }
+kbd { font: inherit; }
+sub { font-size: .55em; vertical-align: baseline; position: relative; top: .25em; }
+.icon { flex: none; vertical-align: -3px; }
+/* The ring is never removed: every pressable thing shows it, in both themes. */
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+h1:focus { outline: none; }              /* focus lands here after a route change, by script only */
+/* Headings focused by the program (never reached by Tab) draw no ring: after a Space press it
+   boxed the whole heading like a selected text field (review 4, finding 13). */
+h1[tabindex="-1"]:focus-visible, h2[tabindex="-1"]:focus-visible { outline: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.link { color: var(--accent); }
+.reason { font: var(--t-small); color: var(--muted); }
+.skip-link { position: absolute; left: var(--s4); top: -64px; padding: var(--s2) var(--s4); background: var(--surface); color: var(--accent); border-radius: var(--r-s); z-index: 10; }
+.skip-link:focus { top: var(--s2); }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes breathe { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+
+/* ---------------------------------------------------------------- top bar */
+.topbar { display: flex; align-items: center; gap: var(--s5); height: 56px; padding: 0 var(--s4); background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { display: inline-flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--text); text-decoration: none; white-space: nowrap; }
+.brand svg { color: var(--accent); }
+/* min-width 0 lets the tabs give way first; the right-hand group never shrinks, so the
+   Settings gear cannot be pushed off the screen. */
+.tabs { display: flex; align-self: stretch; gap: var(--s1); min-width: 0; }
+.tab { display: inline-flex; align-items: center; gap: 6px; padding: 0 var(--s3); color: var(--muted); text-decoration: none; border-bottom: 3px solid transparent; border-top: 3px solid transparent; white-space: nowrap; transition: color var(--d-quick) var(--ease), border-color var(--d-quick) var(--ease); }
+.tab:hover { color: var(--text); }
+.tab[aria-current="page"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+/* While the mic is scoring the tabs step back; leaving then asks first (shell.js). */
+.is-scoring .tab, .is-scoring .tab[aria-current="page"] { color: var(--quiet); }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--s2); flex-shrink: 0; }
+
+/* ---------------------------------------------------------------- buttons, chips, cards */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 var(--s4); border-radius: var(--r-m); border: 1px solid transparent; background: none; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; transition: transform var(--d-quick) var(--ease), box-shadow var(--d-quick) var(--ease), border-color var(--d-quick) var(--ease), background-color var(--d-quick) var(--ease); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn-primary { min-height: 44px; background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 0 4px var(--accent-wash); }
+.btn-primary:active:not(:disabled) { transform: translateY(1px) scale(.98); }
+.btn-secondary { background: var(--raised); color: var(--text); border-color: var(--line); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); }
+.btn-quiet { color: var(--accent); padding: 0 var(--s2); }
+.btn-quiet:hover:not(:disabled) { text-decoration: underline; }
+.btn-danger { color: var(--error); border-color: var(--error); }
+.btn-danger:hover { background: var(--error-wash); }
+.btn-small { min-height: 40px; padding: 0 var(--s3); font: var(--t-small); font-weight: 600; }
+.btn:disabled { background: var(--raised); color: var(--quiet); border-color: transparent; cursor: default; }
+.btn-quiet:disabled { background: none; }
+.icon-button { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--r-m); background: none; color: var(--muted); cursor: pointer; }
+.icon-button:hover { color: var(--text); background: var(--raised); }
+.keycap { display: inline-block; padding: 0 6px; font: var(--t-tiny); border-radius: var(--r-s); border: 1px solid var(--line-strong); background: var(--raised); color: var(--text); }
+.btn-primary .keycap { background: transparent; color: inherit; border-color: currentColor; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 var(--s3); border-radius: var(--r-pill); background: var(--raised); border: 1.5px solid transparent; font: var(--t-small); font-weight: 600; color: var(--text); white-space: nowrap; transition: border-color var(--d-quick) var(--ease); }
+.chip .icon { color: var(--muted); transition: color var(--d-quick) var(--ease); }
+.chip-button { min-height: 40px; cursor: pointer; }
+.chip-button:hover { border-color: var(--accent); }
+.chip-small { min-height: 22px; padding: 0 var(--s2); margin-left: var(--s2); font: var(--t-tiny); vertical-align: 2px; }
+.chip[data-role="good"], .chip[data-kind="in"] { border-color: var(--good); }
+.chip[data-role="good"] .icon, .chip[data-kind="in"] .icon { color: var(--good); }
+.chip[data-role="close"], .chip[data-kind="close"] { border-color: var(--close); }
+.chip[data-role="close"] .icon, .chip[data-kind="close"] .icon { color: var(--close); }
+.chip[data-kind="off"] { border-color: var(--off); }
+.chip[data-kind="off"] .icon { color: var(--off); }
+.chip[data-role="error"] { border-color: var(--error); }
+.chip[data-role="error"] .icon { color: var(--error); }
+.chip[data-role="quiet"] .icon, .chip[data-kind="listening"] .icon { color: var(--quiet); }
+/* Headphones not asked yet: a quiet question, not an answer. */
+.chip[data-role="unasked"] { background: none; color: var(--quiet); }
+.chip[data-role="unasked"] .icon { color: var(--quiet); }
+.chip-icon { display: inline-flex; gap: 2px; }
+.mic-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.mic-bars i { width: 3px; height: 12px; border-radius: 1px; background: var(--good); transform-origin: bottom; transform: scaleY(calc(.25 + .75 * var(--lv, 0))); transition: transform var(--d-quick) linear; }
+.mic-bars i:nth-child(1) { transform: scaleY(calc(.25 + .45 * var(--lv, 0))); }
+.mic-bars i:nth-child(3) { transform: scaleY(calc(.25 + .6 * var(--lv, 0))); }
+
+.card { display: block; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-m); padding: var(--s5); box-shadow: var(--shadow-card); color: var(--text); }
+.card > * + * { margin-top: var(--s2); }
+.card p { color: var(--muted); }
+.card-link { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); text-decoration: none; transition: border-color var(--d-quick) var(--ease); }
+.card-link:hover { border-color: var(--accent); }
+.card-link > .icon { color: var(--muted); }
+.card-waiting h2 { color: var(--muted); }
+
+/* ---------------------------------------------------------------- sheet, toast, banner */
+dialog.sheet { width: min(560px, calc(100vw - var(--s6))); max-height: calc(100vh - var(--s7)); padding: 0; border: 0; border-radius: var(--r-l); background: var(--surface); color: var(--text); box-shadow: var(--shadow-sheet); animation: fade-in var(--d-base) var(--ease); }
+dialog.sheet[open] { display: flex; flex-direction: column; }
+dialog.sheet::backdrop { background: var(--scrim); animation: fade-in var(--d-base) var(--ease); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s4) var(--s4) 0 var(--s5); min-height: 56px; }
+.sheet-body { padding: var(--s3) var(--s5) var(--s5); overflow: auto; }
+.sheet-body > * + * { margin-top: var(--s4); }
+.sheet-body p { color: var(--muted); }
+.sheet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.steps li + li { margin-top: var(--s2); }
+.settings-part { padding-top: var(--s4); border-top: 1px solid var(--line); }
+.settings-part:first-child { border-top: 0; padding-top: 0; }
+.settings-part > * + * { margin-top: var(--s3); }
+.settings-part h3:focus { outline: none; }
+/* Where Chrome's own question shows up: a mini browser window (three dots, an address bar)
+   with a small card under the left end of the bar. Left-aligned and small so it cannot be
+   taken for an empty text field; the caption under it says what it means. */
+.ask-diagram { position: relative; width: 260px; max-width: 100%; height: 84px; border: 1.5px solid var(--line-strong); border-radius: var(--r-s); background: var(--raised); }
+.ask-dots { position: absolute; left: var(--s2); top: 10px; display: flex; gap: 4px; }
+.ask-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+.ask-bar { position: absolute; left: 44px; right: var(--s2); top: var(--s2); height: 10px; border-radius: var(--r-pill); background: var(--line); }
+.ask-box { position: absolute; left: 44px; top: 28px; padding: var(--s1) var(--s3); border-radius: var(--r-s); border: 1.5px solid var(--accent); background: var(--surface); box-shadow: var(--shadow-card); font: var(--t-tiny); color: var(--text); }
+.sheet-body .ask-hint { margin-top: var(--s2); font: var(--t-small); }
+.sheet-body .ask-hint, .sheet-body .heard.is-heard { color: var(--text); }
+.heard { display: flex; align-items: center; gap: 6px; font: var(--t-h2); }
+.heard .icon { color: var(--good); }
+
+.toast { position: fixed; left: 50%; bottom: var(--s5); transform: translateX(-50%); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--raised); border: 1px solid var(--line-strong); color: var(--text); opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); z-index: 20; }
+.toast.is-shown { opacity: 1; visibility: visible; transition-delay: 0s; }
+
+@keyframes banner-in { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+@keyframes banner-out { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
+/* The banner opens by growing its own row, so it pushes the stage down and never covers it. */
+.banner-wrap { display: grid; grid-template-rows: 1fr; animation: banner-in var(--d-slow) var(--ease) both; }
+.banner-wrap.is-leaving { animation: banner-out var(--d-slow) var(--ease) both; }
+.banner-clip { min-height: 0; overflow: hidden; }
+.banner { display: flex; align-items: flex-start; gap: var(--s3); margin-bottom: var(--s3); padding: var(--s3) var(--s4); background: var(--raised); border-radius: var(--r-s); border-left: 4px solid var(--accent); }
+.banner[data-role="close"] { border-left-color: var(--close); }
+.banner[data-role="close"] .banner-icon { color: var(--close); }
+.banner[data-role="error"] { border-left-color: var(--error); }
+.banner[data-role="error"] .banner-icon { color: var(--error); }
+.banner-text { flex: 1; min-width: 0; }
+.banner-text > * + * { margin-top: var(--s1); }
+.banner-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.cleanup-rows { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); font: var(--t-small); }
+.cleanup-row { display: inline-flex; align-items: center; gap: 6px; }
+.cleanup-row[data-state="off"] .icon { color: var(--good); }
+.cleanup-row[data-state="on"] .icon { color: var(--close); }
+.cleanup-row[data-state="unknown"] .icon { color: var(--quiet); }
+
+/* ---------------------------------------------------------------- form parts */
+.field { display: block; }
+.field > * + * { margin-top: var(--s2); }
+.field-label { display: block; font: var(--t-small); font-weight: 600; }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
+.field-row > * + * { margin-top: 0; }
+.segmented { position: relative; display: grid; grid-template-columns: repeat(var(--n, 2), 1fr); padding: 3px; border-radius: var(--r-pill); background: var(--raised); }
+.segmented::before { content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 2)); border-radius: var(--r-pill); background: var(--surface); box-shadow: var(--shadow-card); transform: translateX(calc(var(--i, 0) * 100%)); transition: transform var(--d-base) var(--ease); }
+.segment { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 40px; padding: 0 var(--s2); border: 0; border-radius: var(--r-pill); background: none; color: var(--muted); cursor: pointer; font: var(--t-small); }
+.segment .icon { display: none; }
+.segment[aria-checked="true"] { color: var(--text); font-weight: 600; }
+.segment[aria-checked="true"] .icon { display: inline; }
+.segment[aria-disabled="true"] { color: var(--quiet); cursor: default; }
+.switch-wrap { display: flex; align-items: center; gap: var(--s2); }
+.switch-word { font: var(--t-small); font-weight: 600; min-width: 2em; text-align: right; }
+.switch { position: relative; width: 52px; height: 40px; padding: 0; border: 0; background: none; cursor: pointer; }
+.switch::before { content: ""; position: absolute; left: 4px; right: 4px; top: 8px; bottom: 8px; border-radius: var(--r-pill); background: var(--raised); border: 1.5px solid var(--line-strong); transition: background-color var(--d-base) var(--ease), border-color var(--d-base) var(--ease); }
+.switch-thumb { position: absolute; left: 8px; top: 12px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: transform var(--d-base) var(--ease), background-color var(--d-base) var(--ease); }
+.switch[aria-checked="true"]::before { background: var(--accent-wash); border-color: var(--accent); }
+.switch[aria-checked="true"] .switch-thumb { transform: translateX(20px); background: var(--accent); }
+.select, input[type="range"] { width: 100%; }
+.select { min-height: 40px; padding: 0 var(--s3); border-radius: var(--r-s); border: 1.5px solid var(--line-strong); background: var(--raised); }
+input[type="range"] { min-height: 40px; accent-color: var(--accent); }
+
+/* ---------------------------------------------------------------- pitch stage */
+.pitch-view { display: grid; grid-template-columns: minmax(480px, 1fr) 288px; gap: var(--s5); align-items: start; }
+.pitch-main { min-width: 0; }
+.stage { position: relative; height: clamp(300px, calc(100vh - 340px), 520px); min-width: 480px; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--stage); overflow: hidden; }
+.stage canvas { display: block; width: 100%; height: 100%; transition: opacity var(--d-base) var(--ease); }
+.stage canvas:focus-visible { outline-offset: -4px; }
+.stage[data-state="paused"] canvas { opacity: .6; }
+.stage-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: var(--s3); max-width: 80%; padding: var(--s4) var(--s5); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); text-align: center; opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
+.stage-card.is-shown { opacity: 1; visibility: visible; transition-delay: 0s; }
+.stage-card-text { font: var(--t-h2); }
+.stage-card-icon:empty { display: none; }
+.stage-card-icon { color: var(--accent); }
+.stage[data-state="starting"] .stage-card-icon { animation: breathe var(--d-breathe) var(--ease-in-out) infinite; }
+.stage[data-state="countin"] .stage-card { background: none; border-color: transparent; box-shadow: none; }
+@keyframes count-in { 0% { opacity: 0; } 20%, 80% { opacity: 1; } 100% { opacity: 0; } }
+/* 200 ms in, 200 ms out, inside each one-second count. */
+/* The disc stays put while the numbers change, so the target band never runs through a digit. */
+.stage-count-disc { display: grid; place-content: center; justify-items: center; width: 96px; height: 96px; border-radius: 50%; background: color-mix(in srgb, var(--surface) 92%, transparent); }
+.stage-count-label { font: var(--t-small); color: var(--muted); }
+.stage-count { display: block; font: var(--t-note); font-size: 3rem; line-height: 3.25rem; color: var(--text); animation: count-in 1s linear both; }
+.stage-caption { position: absolute; left: 50%; top: var(--s3); transform: translateX(-50%); padding: var(--s1) var(--s3); border-radius: var(--r-pill); background: var(--surface); border: 1px solid var(--line); font: var(--t-small); font-weight: 600; opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
+.stage-caption.is-shown { opacity: 1; visibility: visible; transition-delay: 0s; }
+
+.meter-only { display: none; flex-direction: column; align-items: center; justify-content: center; gap: var(--s5); min-height: 300px; padding: var(--s5); border-radius: var(--r-l); border: 1px solid var(--line); background: var(--surface); }
+.pitch-view[data-view="meter"] .stage { display: none; }
+.pitch-view[data-view="meter"] .meter-only { display: flex; }
+.pitch-view[data-view="meter"] .hud-ring, .pitch-view[data-view="meter"] .hud-meter { display: none; }
+
+/* ---------------------------------------------------------------- read-out (HUD) */
+.hud { display: flex; flex-direction: column; align-items: center; gap: var(--s3); text-align: center; }
+/* meter + number, and chip + hint: in the side column they stack like everything else; in
+   the narrow row each is one fixed-width slot, so parts do not swap rows as words change. */
+.hud-slot { display: flex; flex-direction: column; align-items: center; gap: var(--s3); max-width: 100%; }
+.note-ring { display: grid; place-items: center; width: 148px; height: 148px; border-radius: 50%; border: 8px solid var(--line); background: var(--surface); }
+.note-name { font: var(--t-note); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note-ring.is-quiet .note-name { color: var(--quiet); }
+/* "Sol♯3" at the full size is wider than the ring. */
+.note-ring[data-long] .note-name { font-size: 3rem; line-height: 3.25rem; }
+.meter { width: 240px; max-width: 100%; }
+.meter-track { position: relative; height: 14px; border-radius: var(--r-pill); background: var(--raised); border: 1px solid var(--line); container-type: inline-size; }
+.meter-zone { position: absolute; top: 0; bottom: 0; }
+.zone-good { background: var(--good-wash); }
+.zone-close { background: var(--close-wash); }
+.meter-centre { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; margin-left: -.75px; background: var(--line-strong); }
+.meter-needle { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); transition: transform var(--d-quick) linear, background-color var(--d-quick) var(--ease), opacity var(--d-base) var(--ease); }
+.meter[data-kind="in"] .meter-needle { background: var(--good); }
+.meter[data-kind="close"] .meter-needle { background: var(--close); }
+.meter[data-kind="off"] .meter-needle { background: var(--off); }
+/* Hidden whenever the ring shows "–": a resting needle would read as "on the note". */
+.meter.is-idle .meter-needle { opacity: 0; }
+.meter-ends { display: flex; justify-content: space-between; margin-top: var(--s1); font: var(--t-tiny); color: var(--muted); }
+/* Past the end of the scale the needle parks and that end's word stands out. No arrow: it
+   would point away from where the voice should go. */
+.meter-ends span { transition: color var(--d-quick) var(--ease); }
+.meter:not(.is-idle)[data-parked="low"] .meter-ends span:first-child,
+.meter:not(.is-idle)[data-parked="high"] .meter-ends span:last-child { color: var(--text); font-weight: 600; }
+.meter-caption { min-height: 1.125rem; font: var(--t-tiny); color: var(--muted); }
+.meter-big { width: min(560px, 100%); }
+.meter-big .meter-track { height: 20px; }
+.meter-big .meter-needle { width: 22px; height: 22px; margin: -11px 0 0 -11px; }
+.hud-number { min-height: 1.625rem; font: var(--t-h2); font-variant-numeric: tabular-nums; }
+.verdict-chip.is-empty { visibility: hidden; }
+.hud-hint { min-height: 2.5rem; max-width: 240px; font: var(--t-small); color: var(--muted); opacity: 0; transition: opacity var(--d-base) var(--ease); }
+.hud-hint.is-shown { opacity: 1; }
+.level { width: 240px; max-width: 100%; text-align: left; }
+.level-label { font: var(--t-tiny); color: var(--muted); }
+/* The fill is not the accent colour: accent means "pressable". The track is --line so it
+   shows on Dawn too. */
+.level-bar { height: 6px; margin-top: var(--s1); border-radius: var(--r-pill); background: var(--line); overflow: hidden; }
+.level-bar i { display: block; height: 100%; background: var(--muted); transform-origin: left; transform: scaleX(0); transition: transform var(--d-quick) linear; }
+.level-big { width: 100%; }
+.level-big .level-bar { height: 14px; }
+
+/* ---------------------------------------------------------------- screens */
+main { max-width: 1280px; margin: 0 auto; padding: var(--s4); }
+main:focus { outline: none; }
+main > * + * { margin-top: var(--s3); }
+.title-row { display: flex; align-items: center; gap: var(--s3); min-height: 44px; }
+.title-row .streak { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.action-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.action-main { display: flex; align-items: center; gap: var(--s3); }
+.facts { min-height: 1.25rem; font: var(--t-small); color: var(--muted); }
+/* One row at 1216 px and wider (Lower · 12 notes · Higher · Play it · Clear); it wraps
+   between the parts, and only in a very narrow window inside the strip. */
+.aim-panel { padding: var(--s4); }
+.aim-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.note-strip { display: flex; flex-wrap: wrap; gap: var(--s1); min-width: 0; }
+/* The "why" beside Play it takes whatever room is left and wraps inside it (two lines are
+   as tall as a button), so a few pixels of font difference cannot add a row to the panel. */
+.aim-row > .reason { flex: 1 1 0; min-width: 5.5em; }
+.note-key { min-width: 52px; height: 40px; padding: 0 var(--s2); border-radius: var(--r-s); border: 1.5px solid var(--line-strong); background: var(--raised); cursor: pointer; font: var(--t-small); font-weight: 600; transition: border-color var(--d-quick) var(--ease); }
+.note-key:hover:not(:disabled) { border-color: var(--accent); }
+/* The chosen note: target colour AND a thicker edge, so it does not rest on colour alone. */
+.note-key[aria-pressed="true"] { border: 3px solid var(--target); background: var(--target-wash); }
+.note-key:disabled { color: var(--quiet); border-color: var(--line); cursor: default; }
+
+.today-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--s5); }
+.card-session { grid-column: span 8; border-radius: var(--r-l); padding: var(--s6); }
+.card-session > * + * { margin-top: var(--s4); }
+.today-side { grid-column: span 4; grid-row: span 2; display: flex; flex-direction: column; gap: var(--s5); }
+.shortcuts { grid-column: span 8; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }
+.path { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--s2); }
+.path li { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font: var(--t-small); }
+.path-dot { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--line-strong); color: var(--muted); font: var(--t-tiny); }
+.path-len { color: var(--muted); }
+/* A preview of what comes next, not a list of things to press. */
+.path.is-preview .path-name { color: var(--muted); }
+.card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }
+
+@media (min-width: 1100px) {
+  main { padding: var(--s5) var(--s6); }
+  .topbar { padding: 0 var(--s6); }
+}
+/* Short windows (down to 640 px tall): a smaller note ring keeps the read-out beside the stage. */
+@media (max-height: 720px) {
+  .note-ring { width: 104px; height: 104px; border-width: 6px; }
+  .note-ring .note-name { font-size: 3rem; line-height: 3.25rem; }
+  .note-ring[data-long] .note-name { font-size: 2rem; line-height: 2.25rem; }
+  .hud, .hud-slot { gap: var(--s2); }
+}
+/* Under 1100 px the top bar keeps words where words are needed and drops the rest: tabs are
+   words without icons, the brand is its mark, the headphones chip is its icons (its words
+   stay in aria-label and title, set by shell.js). */
+@media (max-width: 1099px) {
+  .topbar { gap: var(--s4); }
+  .tab .icon { display: none; }
+  .brand-name, #headphones-chip > span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+/* Narrow: one column; the read-out becomes a row under the stage. */
+@media (max-width: 899px) {
+  .pitch-view { grid-template-columns: 1fr; }
+  .hud { flex-direction: row; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: var(--s3) var(--s4); text-align: left; }
+  .hud-slot { flex: none; align-items: flex-start; width: 240px; }
+  .today-grid, .card-grid, .shortcuts { grid-template-columns: 1fr; }
+  .card-session, .today-side, .shortcuts { grid-column: auto; grid-row: auto; }
+}
+/* Under 760 px the microphone chip is icons only too (words in aria-label and title, set by
+   micflow.js) and the bar tightens, so it still fits at the smallest supported width. */
+@media (max-width: 759px) {
+  .topbar { gap: var(--s3); padding: 0 var(--s3); }
+  .tab { padding: 0 var(--s2); }
+  .tab .chip-small { display: none; }
+  #mic-chip > span:not(.mic-bars) { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* ---------------------------------------------------------------- small windows */
+.too-small { display: none; margin: var(--s4); }
+@media (max-width: 639px), (max-height: 519px) {
+  .too-small { display: block; }
+  /* Narrower than anything supported: the tabs scroll sideways rather than push the page wide. */
+  .tabs { overflow-x: auto; }
+  .tab:focus-visible { outline-offset: -3px; }
+  .stage { min-width: 0; }
+  .pitch-view { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------- calm motion
+   data-calm is set by shell.js from the Settings switch or the system's reduced-motion
+   setting. Slides become a 200 ms fade; the breathing loop is off. */
+[data-calm="on"] .stage-card-icon, .stage.is-calm .stage-card-icon { animation: none !important; }
+[data-calm="on"] .banner-wrap { animation: fade-in var(--d-base) var(--ease) both; }
+[data-calm="on"] .banner-wrap.is-leaving { animation: fade-in var(--d-base) var(--ease) reverse both; }
+[data-calm="on"] .segmented::before, [data-calm="on"] .switch-thumb { transition-duration: 0s; }
+[data-calm="on"] .btn { transition: none; }
+[data-calm="on"] .btn-primary:hover:not(:disabled), [data-calm="on"] .btn:active:not(:disabled) { transform: none; }
+
+/* ---------------------------------------------------------------- exercises (spec section 7)
+   The shared frame, the hold ring's HUD copy, the stars, the round-done card, the edge glow. */
+.ex-head { flex-wrap: wrap; }
+.ex-step { color: var(--muted); font: var(--t-small); font-variant-numeric: tabular-nums; }
+/* The reserved line under the stage. As tall as its one button, so a microphone warning
+   arriving here moves nothing (review 2, finding 3). 32 px, not the usual 40: at 1024 x 640
+   the main buttons must stay on the screen. */
+.ex-under { display: flex; align-items: center; gap: var(--s2); min-height: 32px; }
+.ex-under .btn { min-height: 32px; }
+.ex-under[data-role="close"] { color: var(--text); }
+.ex-under[data-role="close"] > .icon { flex: none; color: var(--close); }
+/* Start / Next are 44 px and Stop is 40: without this everything under the row moved 4 px
+   with each phase. */
+.exercise > .action-row { min-height: 44px; }
+.exercise[data-phase="done"] > .action-row { display: none; }
+/* The phase chip already says "Listen": the stage's own "Listen…" would say it twice. */
+.exercise .stage-caption { display: none; }
+.ex-hint { color: var(--text); }
+/* This exercise speaks its own hints: the general ones would say a second thing at once. */
+.exercise .hud-hint:not(.ex-hint) { display: none; }
+.star-tray { display: flex; gap: var(--s1); margin-left: auto; padding: 0; list-style: none; }
+.tray-star { position: relative; display: inline-grid; place-items: center; }
+.tray-star > .icon { position: absolute; color: var(--gold-ink); animation: fade-in var(--d-base) var(--ease) both; }
+/* Not earned: an outline. Earned: filled, with a tick, in one of three shapes. Never colour alone. */
+.star-shape { display: block; overflow: visible; }
+.star-shape path { fill: none; stroke: var(--quiet); stroke-width: .12; stroke-linejoin: round; transition: fill var(--d-base) var(--ease), stroke var(--d-base) var(--ease); }
+.star-shape circle { fill: none; stroke: var(--gold); stroke-width: .1; }
+.tray-star[data-earned] .star-shape path, .flying-star path { fill: var(--gold-fill); stroke: var(--gold); }
+.flying-star { position: fixed; left: 0; top: 0; z-index: 50; pointer-events: none; offset-rotate: 0deg; }
+
+.stage-chips { position: absolute; left: var(--s3); top: var(--s3); display: flex; flex-wrap: wrap; gap: var(--s2); max-width: calc(100% - var(--s5)); }
+.stage-chips .chip { background: var(--surface); border-color: var(--line); }
+.stage-chips .chip[data-role="good"] { border-color: var(--good); }
+.stage-chips .chip[data-role="close"] { border-color: var(--close); }
+.chip[data-role="accent"] { border-color: var(--accent); }
+.chip[data-role="accent"] .icon { color: var(--accent); }
+.chip[data-role="gold"] { border-color: var(--gold); }
+.chip[data-role="gold"] .icon { color: var(--gold); }
+/* The octave mark: two stacked dots. */
+.octave-dots { display: inline-grid; gap: 3px; }
+.octave-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--close); }
+
+/* The hold ring on the rim of the note ring: laid over its border, same value as the stage's. */
+.note-ring.has-hold-rim { position: relative; }
+.note-ring.has-hold-rim .note-name { position: relative; z-index: 1; }
+.hold-rim { position: absolute; inset: -8px; width: calc(100% + 16px); height: calc(100% + 16px); pointer-events: none; }
+.hold-rim circle { fill: none; stroke-width: 5.4; }
+.hold-rim-track { stroke: var(--target); opacity: .18; }
+.hold-rim-fill { stroke: var(--good); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50px 50px; transition: stroke-dasharray var(--d-quick) linear, stroke-width var(--d-quick) var(--ease); }
+.hold-rim.is-landed .hold-rim-fill { stroke-width: 7; }
+/* The star rides the rim at 12 o'clock, centred on the border's middle, above the fill. */
+.hold-rim-star { position: absolute; left: 50%; top: -4px; z-index: 2; margin: -12px 0 0 -12px; overflow: visible; pointer-events: none; }
+.hold-rim-star path { fill: var(--gold-fill); stroke: var(--gold); stroke-width: 1px; transition: transform 80ms linear; }
+.hud-held { min-height: 1.25rem; margin-top: var(--s2); font: var(--t-small); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Slides up over the lower part of the stage; the take stays visible above it. */
+@keyframes card-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.done-card { position: absolute; left: var(--s3); right: var(--s3); bottom: var(--s3); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s4); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sheet); animation: card-up var(--d-slow) var(--ease) both; }
+.done-card[data-tier="best"] { border-color: var(--gold); box-shadow: var(--shadow-sheet), 0 0 32px var(--gold-glow); }
+.done-top { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.done-stars { display: flex; gap: var(--s1); }
+.done-line { font: var(--t-body); font-weight: 600; }
+.done-card > .action-row { grid-column: 2; grid-row: 1 / span 3; }
+.done-card > p { grid-column: 1; }
+/* Under a short stage (see matchhold.js placeDone): in the page's flow, one compact row. */
+.done-card.is-below { position: static; padding: var(--s2) var(--s4); box-shadow: none; animation: fade-in var(--d-base) var(--ease) both; }
+/* ...and the reserved line gives its room to the card, so "Again" is on the screen at 640. */
+.exercise.done-below[data-phase="done"] > .ex-under { display: none; }
+.sheet-figure { display: grid; place-items: center; color: var(--accent); }
+
+/* Edge glow: 0 to 3 levels by notes in tune in a row, eased both ways (STYLE.md section 6). */
+.stage::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 2px transparent, inset 0 0 0 0 transparent; transition: box-shadow var(--d-reveal) var(--ease); }
+.stage[data-glow="1"]::after { box-shadow: inset 0 0 0 2px var(--good), inset 0 0 6px 0 var(--good); }
+.stage[data-glow="2"]::after { box-shadow: inset 0 0 0 2px var(--good), inset 0 0 12px 0 var(--good); }
+.stage[data-glow="3"]::after { box-shadow: inset 0 0 0 2px var(--good), inset 0 0 18px 0 var(--good); }
+
+@media (max-height: 720px) {
+  .hold-rim { inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); }
+  .hold-rim-star { top: -3px; }
+}
+@media (max-width: 899px) {
+  .done-card { grid-template-columns: 1fr; }
+  .done-card > .action-row { grid-column: 1; grid-row: auto; }
+}
+[data-calm="on"] .done-card { animation: fade-in var(--d-base) var(--ease) both; }
+[data-calm="on"] .hold-rim-star path { transition: none; }
+
+/* ---------------------------------------------------------------- the main button stays in view
+   Review 4, finding 2. In a narrow (under 760 px) or short (under 700 px) window the row of
+   buttons rides the bottom edge of the window, so the one thing to press is never below the
+   fold; what is above it scrolls underneath. The same for the card that carries "Again" or
+   "Save" once a round is done. Free sing, Match and hold, Sing a constellation, Find your
+   range and the setup card all use it. */
+@media (max-width: 759px), (max-height: 699px) {
+  /* The soft edge above the row is a shadow in the page's colour: what scrolls under the
+     row fades out, and the row costs no height (a rule and padding made every screen that
+     fitted a 1024 x 640 window 25 px too tall). */
+  main > .action-row, .exercise > .action-row, .exercise > .done-slot, .constellation > .figure-done {
+    position: sticky; bottom: 0; z-index: 4; background: var(--bg); box-shadow: 0 calc(-1 * var(--s3)) var(--s3) var(--bg), 0 var(--s4) 0 var(--bg); }
+}
+/* Narrow: the row also gets a rule and a little air, since the read-out sits right above it. */
+@media (max-width: 759px) {
+  main > .action-row, .exercise > .action-row { padding: var(--s2) 0; border-top: 1px solid var(--line); box-shadow: 0 var(--s4) 0 var(--bg); }
+}
+/* Narrow: the read-out is one compact block under the stage, not a stack of four parts.
+   Row 1: the small note ring with its lines beside it | the number and the verdict chip.
+   Row 2: the hint. Row 3: the meter | the mic level. The stage gives up height so that the
+   whole screen fits a 700 x 800 window where it can. */
+@media (max-width: 759px) {
+  .stage { height: clamp(240px, calc(100vh - 484px), 460px); }
+  .constellation .stage { height: clamp(240px, calc(100vh - 528px), 460px); }
+  .hud { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; justify-items: start; gap: var(--s2) var(--s4); text-align: left; }
+  .hud-slot { display: contents; }
+  .hud-ring { grid-column: 1; grid-row: 1 / span 2; display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+  .note-ring { flex: none; width: 72px; height: 72px; border-width: 5px; }
+  .note-ring .note-name { font-size: 2rem; line-height: 2.25rem; }
+  .note-ring[data-long] .note-name { font-size: 1.25rem; line-height: 1.5rem; }
+  .hold-rim { inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); }
+  .hold-rim-star { top: -2.5px; }
+  .hud-held { margin-top: 0; min-width: 0; }
+  .hud-number { grid-column: 2; grid-row: 1; align-self: end; }
+  .verdict-chip { grid-column: 2; grid-row: 2; align-self: start; }
+  .hud-hint { grid-column: 1 / -1; grid-row: 3; min-height: 1.25rem; max-width: none; }
+  .hud-meter { grid-column: 1; grid-row: 4; width: 100%; }
+  .hud-meter .meter { width: 100%; max-width: 280px; }
+  .hud > .level { grid-column: 2; grid-row: 4; align-self: start; width: 100%; max-width: 280px; }
+}

@@ -1,0 +1,91 @@
+#TITLE:The First Noel
+#ARTIST:Traditional
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:English traditional carol, first printed 1833
+#LYRICIST:English traditional carol, first printed 1823
+#PUBLICDOMAIN:Words printed in 1823 and tune in 1833: published before 1931.
+#SOURCE:Open Hymnal Project, http://openhymnal.org/Midi/The_First_Noel-The_First_Noel.mid
+#SOURCESHA256:8e6cb43bf67deaa4df1b1fe1957f5dfde0ed1f25b959650e5ef79564debd5915
+#LICENSE:Public domain (the source score; retrieved 2026-10-12)
+#BPM:184
+#GAP:2000
+: 0 3 6 The
+: 4 3 4 ~
+: 8 11 2  first
+: 20 3 4 ~
+: 24 3 6  No
+: 28 3 7 ~
+: 32 15 9 el
+: 48 3 11  the
+: 52 3 13 ~
+: 56 7 14  an
+: 64 7 13 gel
+: 72 7 11  did
+: 80 15 9  say
+- 95
+: 96 3 11 Was
+: 100 3 13  to
+: 104 7 14  cer
+: 112 7 13 tain
+: 120 7 11  poor
+: 128 7 9  shep
+: 136 7 11 herds
+: 144 7 13  in
+: 152 7 14  fields
+: 160 7 9  as
+: 168 7 7  they
+: 176 15 6  lay;
+- 191
+: 192 3 6 In
+: 196 3 4 ~
+: 200 11 2  fields
+: 212 3 4 ~
+: 216 3 6  where
+: 220 3 7 ~
+: 224 15 9  they
+: 240 3 11  lay
+: 244 3 13 ~
+: 248 7 14  tend
+: 256 7 13 ing
+: 264 7 11  their
+: 272 15 9  sheep,
+- 287
+: 288 3 11 On
+: 292 3 13  a
+: 296 7 14  cold
+: 304 7 13  win
+: 312 7 11 ter's
+: 320 7 9  night
+: 328 7 11 ~
+: 336 7 13  that
+: 344 7 14  was
+: 352 7 9 ~
+: 360 7 7  so
+: 368 15 6  deep.
+- 383
+: 384 3 6 No
+: 388 3 4 ~
+: 392 11 2 el,
+: 404 3 4 ~
+: 408 3 6  No
+: 412 3 7 ~
+: 416 15 9 el,
+: 432 3 14  No
+: 436 3 13 ~
+: 440 15 11 el,
+: 456 7 11  No
+: 464 15 9 el,
+: 480 7 9 ~
+- 487
+: 488 7 14 Born
+: 496 7 13  is
+: 504 7 11  the
+: 512 7 9  King
+: 520 7 11 ~
+: 528 7 13  of
+: 536 7 14  Is
+: 544 7 9 ~
+: 552 7 7 ra
+: 560 15 6 el.
+E

@@ -1,0 +1,54 @@
+#TITLE:Twinkle Twinkle Little Star
+#ARTIST:Traditional
+#LANGUAGE:English
+#CREATOR:music-trainer demo (melody: French traditional, 1761; words: Jane Taylor, 1806; public domain)
+#BPM:100
+#GAP:2000
+: 0 3 0 Twin
+: 4 3 0 kle
+: 8 3 7  twin
+: 12 3 7 kle
+: 16 3 9  lit
+: 20 3 9 tle
+: 24 7 7  star
+- 30
+: 32 3 5 How
+: 36 3 5  I
+: 40 3 4  won
+: 44 3 4 der
+: 48 3 2  what
+: 52 3 2  you
+: 56 7 0  are
+- 62
+: 64 3 7 Up
+: 68 3 7  a
+: 72 3 5 bove
+: 76 3 5  the
+: 80 3 4  world
+: 84 3 4  so
+: 88 7 2  high
+- 94
+: 96 3 7 Like
+: 100 3 7  a
+: 104 3 5  dia
+: 108 3 5 mond
+: 112 3 4  in
+: 116 3 4  the
+: 120 7 2  sky
+- 126
+: 128 3 0 Twin
+: 132 3 0 kle
+: 136 3 7  twin
+: 140 3 7 kle
+: 144 3 9  lit
+: 148 3 9 tle
+: 152 7 7  star
+- 158
+: 160 3 5 How
+: 164 3 5  I
+: 168 3 4  won
+: 172 3 4 der
+: 176 3 2  what
+: 180 3 2  you
+: 184 7 0  are
+E

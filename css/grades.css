@@ -1,0 +1,105 @@
+/* grades.css — the medallion (js/app/song/medallion.js): a ring that is the percent, a
+   letter inside it, a crown of small stars above. Spec: docs/design/specs/
+   2026-10-13-grades-and-results.md 4.2, 4.3 and 12.
+
+   NOT SEEN IN A BROWSER YET. Sizes, glow strengths and the silver are the spec's GUESSES,
+   to be set on a screenshot in Dusk and Dawn.
+
+   Colours are tokens only (css/tokens.css). Three tokens the spec adds are NOT in
+   tokens.css yet: --silver, --silver-fill, --silver-glow. Until they are, the fallbacks
+   below use existing tokens, so a by-ear medallion is readable but not yet silver.
+
+   Rank is never colour alone: the letter, the count of crown stars and the ring's length.
+   Only transform, opacity and stroke-dashoffset move. The box keeps its height from the
+   first frame of the reveal (visibility, never display). */
+
+.mg {
+  --mg-size: 96px;
+  --mg-silver: var(--silver, var(--muted));
+  --mg-silver-fill: var(--silver-fill, var(--muted));
+  --mg-silver-glow: var(--silver-glow, color-mix(in srgb, var(--muted) 30%, transparent));
+  --mg-letter-size: 3rem;
+  /* The reveal's clock (spec 4.3 and 12): the ring fills from 250 ms for 1150 ms, the
+     letter lands at 1400 ms. */
+  --mg-fill-delay: 250ms;
+  --mg-fill-ms: 1150ms;
+  --mg-strike-at: 1400ms;
+  display: inline-grid; justify-items: center; gap: var(--s1);
+  color: var(--text);
+}
+.mg[data-size="40"] { --mg-letter-size: 1.125rem; gap: 0; }
+.mg[data-size="72"] { --mg-letter-size: 2.25rem; }
+.mg[data-size="104"] { --mg-letter-size: 3rem; }      /* GUESS: the spec gives no letter size for 104 and 120 */
+.mg[data-size="120"] { --mg-letter-size: 3.5rem; }    /* GUESS */
+.mg[data-size="168"] { --mg-letter-size: 5rem; }
+
+/* The crown: one line of the same height whether it holds five stars or none. */
+.mg-crown { display: flex; justify-content: center; align-items: center; gap: 0; height: 24px; min-width: 24px; line-height: 0; }
+.mg-crown-star { flex: none; margin: 0 -3px; }
+.mg-crown-star path { fill: var(--gold-fill); stroke: var(--gold); stroke-width: .18; stroke-linejoin: round; }
+.mg[data-crown="silver"] .mg-crown-star path { fill: var(--mg-silver-fill); stroke: var(--mg-silver); }
+
+.mg-face { position: relative; width: var(--mg-size); height: var(--mg-size); display: grid; place-items: center; }
+.mg-ring { position: absolute; inset: 0; overflow: visible; }
+.mg-track { stroke: var(--line); }
+.mg-lit { stroke: var(--gold); }
+.mg-outer { stroke: var(--gold); opacity: .6; }
+.mg[data-ring="silver"] .mg-lit, .mg[data-ring="silver"] .mg-outer { stroke: var(--mg-silver); }
+.mg[data-ring="sweepDim"] .mg-lit { opacity: .5; }
+.mg-stop-low { stop-color: var(--aurora-low); }
+.mg-stop-mid { stop-color: var(--aurora-mid); }
+.mg-stop-high { stop-color: var(--aurora-high); }
+
+.mg-letter { position: relative; font: 700 var(--mg-letter-size)/1 var(--font-ui); color: var(--text); }
+/* "SS" is two letters in the same ring: five sixths of the size (3rem -> 2.5rem). */
+.mg[data-letter="SS"] .mg-letter { font-size: calc(var(--mg-letter-size) * .8333); }
+.mg[data-tone="gold"] .mg-letter { color: var(--gold); }
+.mg[data-tone="silver"] .mg-letter { color: var(--mg-silver); }
+.mg-dots { color: var(--muted); }
+
+/* "Finding it": the same hollow star the page uses for "Close". Outlined, never greyed. */
+.mg-hollow { position: relative; }
+.mg-hollow path { fill: none; stroke: var(--gold); stroke-width: .2; stroke-linejoin: round; }
+
+/* The bloom behind a gold letter: a soft disc that rides the panel's own fade. */
+.mg-bloom { position: absolute; inset: 8%; border-radius: 50%; background: radial-gradient(closest-side, var(--gold-glow), transparent); }
+.mg[data-bloom="0.5"] .mg-bloom { opacity: .5; }
+.mg[data-tone="silver"] .mg-bloom { background: radial-gradient(closest-side, var(--mg-silver-glow), transparent); }
+/* Dawn: no additive light. A flat disc behind the ring, the letter is ink. */
+[data-theme="dawn"] .mg-bloom { inset: 0; background: var(--gold-glow); }
+[data-theme="dawn"] .mg[data-tone="silver"] .mg-bloom { background: var(--mg-silver-glow); }
+
+.mg-under { margin: 0; font: var(--t-small); color: var(--text); text-align: center; white-space: nowrap; }
+/* STYLE.md's --font-num is not a token in tokens.css: numbers are set the way singnow.css sets them. */
+.mg-percent { font: var(--t-h2); font-variant-numeric: tabular-nums; }
+.mg[data-state="sangTooLittle"] .mg-under, .mg[data-state="tooShort"] .mg-under { color: var(--muted); }
+
+.mg-chip-line { margin: 0; min-height: 1.5rem; display: flex; justify-content: center; }
+.mg-chip {
+  display: inline-flex; align-items: center; gap: var(--s1); padding: 0 var(--s2);
+  border: 1px solid var(--mg-silver); border-radius: var(--r-pill);
+  font: var(--t-tiny); color: var(--mg-silver);
+}
+
+/* ---------------------------------------------------------------- the reveal (data-reveal="run")
+   The page sets data-reveal="done" to skip; calm motion never starts it. */
+.mg[data-reveal="run"] .mg-lit {
+  animation: mg-fill var(--mg-fill-ms) var(--ease) var(--mg-fill-delay) both;
+}
+@keyframes mg-fill { from { stroke-dashoffset: var(--mg-len); } to { stroke-dashoffset: 0; } }
+/* Each crown star the letter has earned fades in as the ring passes its cut-off (the time
+   is taken as a straight share of the fill: a GUESS against the eased ring). */
+.mg[data-reveal="run"] .mg-crown-star {
+  animation: mg-in var(--d-base) linear calc(var(--mg-fill-delay) + var(--mg-fill-ms) * var(--mg-cut, 1)) both;
+}
+.mg[data-reveal="run"] .mg-letter, .mg[data-reveal="run"] .mg-hollow {
+  animation: mg-strike var(--d-slow) var(--ease) var(--mg-strike-at) both;
+}
+.mg[data-reveal="run"] .mg-bloom, .mg[data-reveal="run"] .mg-outer, .mg[data-reveal="run"] .mg-chip {
+  animation: mg-in var(--d-base) linear var(--mg-strike-at) both;
+}
+@keyframes mg-in { from { opacity: 0; } }
+@keyframes mg-strike { from { opacity: 0; transform: scale(1.3); } to { opacity: 1; transform: scale(1); } }
+
+[data-calm="on"] .mg *, .mg[data-calm="on"] * { animation: none; }
+@media (prefers-reduced-motion: reduce) { .mg * { animation: none; } }

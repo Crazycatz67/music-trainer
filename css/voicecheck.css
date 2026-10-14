@@ -1,0 +1,119 @@
+/* voicecheck.css — the voice check and its Sky portrait (voice-check spec section 4).
+   Colours and sizes come from tokens.css, like everywhere else. --good / --close / --off are
+   not used here: they are pitch verdicts, and this screen gives none while a note is sung. */
+
+/* Arrival: a dim sample picture beside what is about to happen. */
+.vc-arrival { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: var(--s6); align-items: center; }
+.vc-sample { opacity: 0.4; }
+.vc-arrival-text > * + * { margin-top: var(--s3); }
+.vc-steps { list-style: decimal inside; display: grid; gap: var(--s1); padding: 0; font-variant-numeric: tabular-nums; }
+.vc-steps li > span:first-child { display: inline-block; min-width: 11em; }
+.vc-last .btn { margin-left: var(--s2); }
+
+.vc-reuse > .action-row { margin-top: var(--s3); }
+
+/* The step's one sentence: read from a sitting distance. Its height is kept, so the stage
+   under it never moves when the words change. */
+.vc-words { min-height: 1.625rem; font: var(--t-h2); transition: opacity var(--d-base) var(--ease); }
+/* While the curtain is shut it carries the same sentence in the middle of the stage, where
+   the eye is: the line above rests (still read out, and its height is kept). Paused: the
+   stage's own card and the line under the stage say so; a stale "Listen" would mislead. */
+.voice-check:is([data-phase="notes"], [data-phase="tunes"]):is([data-part="listen"], [data-part="sing"]) .vc-words,
+.voice-check[data-phase="paused"] .vc-words { opacity: 0; }
+.voice-check .vc-body > * + * { margin-top: var(--s3); }
+.voice-check .stage { height: clamp(260px, calc(100vh - 420px), 480px); }
+
+/* The curtain: nothing of the answer is behind it (no reading reaches the stage while a
+   note is sung); it says so to the eye. It lifts over 600 ms, a fade, never a slide that
+   could flash. */
+.vc-curtain { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); place-content: center; justify-items: center; gap: var(--s3); padding: var(--s3);
+  /* A night cloud, thickest in the middle: the stage's lines never run through the words,
+     and the stars already set still glimmer at the sides. */
+  background: radial-gradient(ellipse 44% 62% at 50% 50%, color-mix(in srgb, var(--stage) 94%, transparent) 0%, color-mix(in srgb, var(--stage) 80%, transparent) 55%, transparent 100%), var(--scrim);
+  transition: opacity 600ms var(--ease), visibility 0s linear 0s; }
+.vc-curtain[data-open="yes"] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 600ms var(--ease), visibility 0s linear 600ms; }
+[data-calm="on"] .vc-curtain, [data-calm="on"] .vc-curtain[data-open="yes"] { transition-duration: 200ms, 0s; }
+/* Paused: the curtain steps aside at once, so its words never sit on the stage's Paused card. */
+.voice-check[data-phase="paused"] .vc-curtain { transition: none; }
+.vc-curtain-words { font: var(--t-h2); color: var(--text); text-align: center; }
+
+/* One ring for a note, four for a tune, all at one height: where they sit says nothing. */
+/* The rings and the Sing ring share one place (same grid cell, 72 px tall), so nothing moves
+   between Listen and Sing. */
+.vc-pulses, .vc-ring { grid-area: 1 / 1; align-self: center; }
+.vc-pulses { display: flex; gap: var(--s4); min-height: 72px; align-items: center; }
+.vc-pulses i { width: 28px; height: 28px; border-radius: 50%; border: 2.5px solid var(--target); opacity: 0.4; transition: opacity var(--d-base) var(--ease), transform var(--d-base) var(--ease), box-shadow var(--d-base) var(--ease); }
+.vc-pulses i[data-on] { opacity: 1; transform: scale(1.3); box-shadow: 0 0 0 6px color-mix(in srgb, var(--target) 22%, transparent), 0 0 22px color-mix(in srgb, var(--target) 55%, transparent); }
+/* One note: one big ring to listen to. While it is sung the Sing ring stands in its place. */
+.vc-pulses i:only-child { width: 56px; height: 56px; border-width: 3px; }
+.vc-pulses i:only-child[data-on] { transform: scale(1.12); }
+.vc-curtain[data-part="sing"] .vc-pulses:has(i:only-child) { visibility: hidden; }
+[data-calm="on"] .vc-pulses i[data-on] { transform: none; }
+
+/* The Sing ring: fills on sound alone. The accent, not a verdict colour. */
+.vc-ring { width: 72px; height: 72px; transform: rotate(-90deg); }
+.vc-ring circle { fill: none; stroke-width: 5; stroke-linecap: round; }
+.vc-ring-track { stroke: var(--line-strong); }
+.vc-ring-fill { stroke: var(--accent); stroke-dasharray: 0 100; transition: stroke-dasharray 80ms linear; }
+
+.vc-count { display: flex; align-items: center; gap: var(--s4); min-height: 24px; }
+.vc-dots { display: flex; gap: var(--s2); list-style: none; padding: 0; }
+/* Done is filled, now is a thicker ring, to come is a thin ring: shape, not colour. */
+.vc-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+.vc-dot[data-state="done"] { background: var(--text); border-color: var(--text); }
+.vc-dot[data-state="now"] { border-width: 3px; border-color: var(--text); }
+
+/* The portrait: the thing the singer keeps. */
+.portrait { display: block; max-width: 100%; border-radius: var(--r-l); border: 1px solid var(--line); background: var(--stage); }
+.portrait-thumb { border-radius: var(--r-s); }
+.portrait-fade { animation: fade-in 200ms var(--ease) both; }
+.vc-picture { min-width: 0; }
+
+.vc-result > * + * { margin-top: var(--s4); }
+.vc-tonight { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: var(--s5); align-items: start; }
+.vc-switch { display: inline-flex; gap: var(--s1); }
+.vc-switch .btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash); }
+
+.vc-words-card h3 { margin-top: var(--s4); font: var(--t-small); font-weight: 600; color: var(--muted); }
+.vc-range-block p { color: var(--text); }
+/* The voice-type sentence: body text in the quiet colour. Never a heading, a chip or a badge. */
+.vc-range-block .vc-type { color: var(--muted); font: var(--t-body); }
+.vc-info { min-height: 32px; padding: 0 var(--s1); vertical-align: middle; }
+.vc-can { list-style: none; padding: 0; display: grid; gap: var(--s3); }
+.vc-can li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: var(--s2); align-items: start; }
+.vc-can li > .icon { margin-top: 3px; color: var(--muted); }
+.vc-can-line { color: var(--text); font-variant-numeric: tabular-nums; }
+.vc-extra p { color: var(--text); }
+.vc-honesty { color: var(--quiet); font: var(--t-small); }
+
+/* Compare: the earlier portrait on the left, tonight's on the right, one note scale. */
+.vc-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
+.vc-pair > div > * + * { margin-top: var(--s2); }
+/* Both captions the same height, so the two pictures start level and their horizons can be
+   compared by eye. */
+.vc-pair-head { display: flex; align-items: center; gap: var(--s2); min-height: 40px; }
+.vc-pick { min-height: 40px; padding: 0 var(--s3); border-radius: var(--r-s); border: 1px solid var(--line-strong); background: var(--raised); color: var(--text); font: var(--t-small); }
+.vc-table { width: 100%; border-collapse: collapse; table-layout: auto; font-variant-numeric: tabular-nums; }
+/* The row names keep to one line where there is room; the spare width goes to the numbers. */
+.vc-table tbody th { white-space: nowrap; width: 1%; padding-right: var(--s5); }
+.vc-table td { font-size: 1rem; }
+.vc-table th, .vc-table td { text-align: left; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); font: var(--t-small); }
+.vc-table thead th, .vc-table tbody th { color: var(--muted); font-weight: 600; }
+.vc-table td { color: var(--text); }
+/* Gold only on a row that grew, and always with its star and its words. */
+.vc-gain { color: var(--gold-ink); font-weight: 600; white-space: nowrap; }
+.vc-gain .icon { color: var(--gold); vertical-align: -3px; }
+
+/* Under 900 px: one column; the words go under the picture, the earlier portrait on top. */
+@media (max-width: 899px) {
+  .vc-arrival, .vc-tonight, .vc-pair { grid-template-columns: minmax(0, 1fr); }
+  .vc-steps li > span:first-child { min-width: 9em; }
+  .vc-table tbody th { white-space: normal; width: auto; padding-right: var(--s3); }
+  .vc-table td { font-size: inherit; }
+}
+@media (max-height: 699px) { .voice-check .stage { height: clamp(220px, calc(100vh - 360px), 480px); } }
+
+/* The stage's own "Press Start, then sing" card belongs to screens with a Start under the
+   stage; here the words above the stage and on the curtain say what to do. Its Paused and
+   Reconnect cards stay. */
+.voice-check .stage[data-state="idle"] .stage-card { display: none; }

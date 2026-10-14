@@ -1,0 +1,54 @@
+#TITLE:Aloha ʻOe (chorus)
+#ARTIST:Liliʻuokalani
+#LANGUAGE:Hawaiian and English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Liliʻuokalani (died 1917), written 1878, published 1884
+#LYRICIST:Liliʻuokalani (died 1917), 1878, with her own English lines
+#PUBLICDOMAIN:Published in 1884: published before 1931.
+#SOURCE:OpenScore Lieder Corpus, https://raw.githubusercontent.com/OpenScore/Lieder/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Liliuokalani%2C_Queen_of_the_Hawaiian_Islands/_/Aloha_Oe/lc6650166.mxl
+#SOURCESHA256:b195ae477a10cbaee281d9b728cac001ae1d50fe4527078ccae14092eee4936c
+#LICENSE:CC0 1.0 Universal (the source score; retrieved 2026-10-12)
+#BPM:144
+#GAP:2000
+: 0 3 0 A
+: 4 7 1 lo
+: 12 7 1 ha
+: 20 11 5  oe
+- 31
+: 32 3 1 a
+: 36 7 0 lo
+: 44 7 0 ha
+: 52 11 3  oe
+- 63
+: 64 3 0 E
+: 68 5 -2  o
+: 74 2 -4 na
+: 76 3 -2 o
+: 80 3 0 na
+: 84 3 1  no
+: 88 3 1 ho
+: 92 3 5  i
+: 96 3 5 ka
+: 100 15 3  li
+: 116 11 0 po
+- 127
+: 128 3 0 A
+: 132 7 1  fond
+: 140 7 1  em
+: 148 11 5 brace,
+- 159
+: 160 3 1 a
+: 164 3 0  ho
+: 168 3 0 i
+: 172 3 0  a
+: 176 3 0 e
+: 180 11 3  au
+- 191
+: 192 3 0 Un
+: 196 11 -2 til
+: 208 3 0  we
+: 212 3 3  meet
+: 216 7 1 ~
+: 224 3 -2  a
+: 228 15 0 gain.
+E

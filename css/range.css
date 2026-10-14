@@ -1,0 +1,127 @@
+/* range.css — Find your range (spec section 7.2) and the first-run setup path (section 4).
+   Colours and sizes come from tokens.css, like everywhere else. */
+
+/* The step's one instruction: read from a sitting distance, while looking at the stage. At
+   the result it is the picture's caption: "This is your sky today". */
+.range-do { min-height: 1.625rem; font: var(--t-h2); }
+/* "Lowest so far: A2" over "Highest so far: E4", under the note ring. Two lines of room are
+   kept from the start, so the read-out below does not move when the second one arrives. */
+.range-lines { min-height: 2.5rem; white-space: pre-line; color: var(--text); }
+
+/* On its own page the stage is a little shorter than elsewhere, so the result card under it
+   (which is taller than the row of buttons it replaces) still fits a 1440 x 800 window. */
+.rangefinder .stage { height: clamp(300px, calc(100vh - 400px), 520px); }
+@media (max-height: 699px) { .rangefinder .stage { height: clamp(240px, calc(100vh - 340px), 520px); } }
+@media (max-width: 759px) { .rangefinder .stage { height: clamp(240px, calc(100vh - 498px), 460px); } }
+/* One row of buttons from 760 px up: the "why" beside the main button wraps inside its own
+   room instead of pushing the last button onto a second row. */
+@media (min-width: 760px) {
+  .rangefinder > .action-row { flex-wrap: nowrap; }
+  .rangefinder > .action-row > .action-main { flex: 1 1 0; min-width: 0; }
+  .rangefinder > .action-row > .action-main > .reason { min-width: 0; }
+}
+
+/* The whole range with the comfortable part inside it; the two small names under the track
+   are the ends of the comfortable part (review 4, finding 14). */
+.range-bar { display: flex; align-items: flex-start; gap: var(--s2); padding-bottom: 1.125rem; font: var(--t-small); font-weight: 600; font-variant-numeric: tabular-nums; }
+.range-bar-track { position: relative; flex: 1; min-width: 80px; height: 10px; margin-top: 5px; border-radius: var(--r-pill); background: var(--accent-wash); border: 1px solid var(--line-strong); }
+.range-bar-track i { position: absolute; top: 1px; bottom: 1px; border-radius: var(--r-pill); background: var(--accent); }
+.range-bar-tick { position: absolute; top: 9px; padding-top: 6px; transform: translateX(-50%); font: var(--t-tiny); color: var(--muted); white-space: nowrap; }
+.range-bar-tick::before { content: ""; position: absolute; left: 50%; top: 0; height: 5px; border-left: 1.5px solid var(--line-strong); }
+.range-card > .range-bar { grid-column: 1; }
+/* The first measurement ever: a gold star and a sentence (the star's shape says it too). */
+.range-card > .range-first { display: flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
+.range-first .icon { color: var(--gold); }
+.range-summary .range-bar { margin-top: var(--s3); }
+
+/* At the result the microphone is off: the meter, the number, the chip and the level have
+   nothing to show. Beside the stage they keep their room (nothing moves); under it they go,
+   and the card takes the room (review 4, finding 4). */
+.rangefinder[data-phase="done"] :is(.hud-meter, .hud-number, .verdict-chip, .hud-hint, .hud > .level) { visibility: hidden; }
+@media (max-width: 899px) {
+  .rangefinder[data-phase="done"] :is(.hud-meter, .hud-number, .verdict-chip, .hud-hint, .hud > .level) { display: none; }
+}
+/* Narrow: the whole read-out goes (an empty ring, and two lines the flags and the card say). */
+@media (max-width: 759px) { .rangefinder[data-phase="done"] .hud { display: none; } }
+
+/* ---- setup: four stars on one line, one step's words, the buttons */
+.setup-card { max-width: 960px; border-radius: var(--r-l); padding: var(--s6); }
+.setup-card > * + * { margin-top: var(--s4); }
+/* Step 3 is a stage: it gets the whole width (review 4, finding 16). */
+.setup[data-step="range"] .setup-card { max-width: none; padding-top: var(--s5); padding-bottom: var(--s5); }
+
+/* The steps are stars joined by a line. To do: an outline star. Now: the star inside an
+   accent ring. Done: a filled gold star with a tick, and the line leading on from it turns
+   gold. Shape and tick carry it; the colour is extra (review 4, 6e). */
+.setup-dots { list-style: none; padding: 0; display: flex; align-items: center; gap: var(--s2); }
+.setup-dots li { display: flex; align-items: center; gap: var(--s2); min-width: 0; font: var(--t-small); color: var(--muted); white-space: nowrap; }
+.setup-dots li:not(:last-child) { flex: 1; }
+.setup-dots li:not(:last-child)::after { content: ""; flex: 1; min-width: var(--s3); border-top: 1.5px dashed var(--line-strong); transition: border-color var(--d-base) var(--ease); }
+.setup-dots li[data-state="done"]:not(:last-child)::after { border-top: 2px solid var(--gold); }
+.setup-star { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: 2.5px solid transparent; transition: border-color var(--d-base) var(--ease); }
+.setup-star > .icon { position: absolute; display: none; color: var(--gold-ink); }
+.setup-dots li[data-state="now"] { color: var(--text); font-weight: 600; }
+.setup-dots li[data-state="now"] .setup-star { border-color: var(--accent); }
+.setup-dots li[data-state="now"] .star-shape path { stroke: var(--text); }
+.setup-dots li[data-state="done"] .star-shape path { fill: var(--gold-fill); stroke: var(--gold); }
+.setup-dots li[data-state="done"] .setup-star > .icon { display: block; }
+
+.setup-step > * + * { margin-top: var(--s3); }
+/* Only the step's own sentences: as `.setup-step p` this reached into the range screen
+   mounted inside it and greyed the instruction to follow (review 4, finding 5). */
+.setup-step > p { color: var(--muted); max-width: 60ch; }
+.setup-step > p:first-of-type { color: var(--text); }
+/* ...and the card's own rule for paragraphs (app.css `.card p`) must not grey them either. */
+.setup-range :is(.range-do, .range-lines, .done-line, .hud-number, .range-first, .ex-under[data-role="close"]) { color: var(--text); }
+.setup-card > .action-row { min-height: 44px; }
+.setup-card > .action-row > .btn:last-child { margin-left: auto; }
+
+/* Step 1: the level bar lives in the card's right half while the test listens. */
+.setup-level .level-fill { height: 100%; width: 0; border-radius: inherit; background: var(--muted); transition: width var(--d-quick) linear; }
+@media (min-width: 760px) {
+  .setup[data-step="mic"] .setup-step { display: grid; grid-template-columns: minmax(0, 60ch) minmax(200px, 320px); column-gap: var(--s6); align-items: start; }
+  .setup[data-step="mic"] .setup-step > * { grid-column: 1; }
+  .setup[data-step="mic"] .setup-step > .setup-level { grid-column: 2; grid-row: 1 / span 3; align-self: center; margin-top: 0; width: 100%; }
+}
+
+.setup-range > * + * { margin-top: var(--s3); }
+/* Inside the card the stage is as tall as the read-out beside it: a shorter one left a
+   110 px hole in the card (review 4, finding 16). The canvas is laid over the box, so its
+   own height can never push the box taller. */
+.setup-range .pitch-view { align-items: stretch; }
+.setup-range .pitch-main { display: flex; flex-direction: column; }
+.setup-range .stage { flex: 1 0 auto; height: clamp(240px, calc(100vh - 500px), 420px); }
+.setup-range .stage canvas { position: absolute; inset: 0; }
+/* Step 3 has one row of buttons: Back and "Set up later" sit in the range screen's own row
+   (review 4, finding 1), with the corner link at the far end as on the other steps. */
+.setup-range .action-row > .btn:last-child { margin-left: auto; }
+
+/* The page behind the card is the night sky (Dusk; Dawn has no stars): hand-placed dots in
+   one large tile, so no lattice shows. Decoration only, behind everything, never moving. */
+.setup::before { content: ""; position: fixed; inset: 56px 0 0 0; z-index: -1; pointer-events: none; opacity: var(--star-opacity);
+  --s-a: color-mix(in srgb, var(--text) 60%, transparent); --s-b: color-mix(in srgb, var(--text) 38%, transparent); --s-c: color-mix(in srgb, var(--text) 24%, transparent);
+  background-image:
+    radial-gradient(circle at 7% 12%, var(--s-a) 0 1.1px, transparent 1.8px), radial-gradient(circle at 23% 71%, var(--s-b) 0 .9px, transparent 1.5px),
+    radial-gradient(circle at 31% 28%, var(--s-c) 0 .8px, transparent 1.4px), radial-gradient(circle at 44% 88%, var(--s-a) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 52% 9%, var(--s-b) 0 .9px, transparent 1.5px), radial-gradient(circle at 58% 47%, var(--s-c) 0 .7px, transparent 1.3px),
+    radial-gradient(circle at 67% 66%, var(--s-b) 0 .8px, transparent 1.4px), radial-gradient(circle at 74% 21%, var(--s-a) 0 1.2px, transparent 1.9px),
+    radial-gradient(circle at 83% 93%, var(--s-c) 0 .8px, transparent 1.4px), radial-gradient(circle at 89% 39%, var(--s-b) 0 .9px, transparent 1.5px),
+    radial-gradient(circle at 96% 77%, var(--s-c) 0 .7px, transparent 1.3px), radial-gradient(circle at 14% 44%, var(--s-c) 0 .7px, transparent 1.3px),
+    radial-gradient(circle at 38% 57%, var(--s-b) 0 .8px, transparent 1.4px), radial-gradient(circle at 3% 86%, var(--s-b) 0 .9px, transparent 1.5px),
+    radial-gradient(circle at 63% 96%, var(--s-c) 0 .7px, transparent 1.3px), radial-gradient(circle at 79% 54%, var(--s-c) 0 .6px, transparent 1.2px),
+    radial-gradient(circle at 18% 3%, var(--s-c) 0 .7px, transparent 1.3px), radial-gradient(circle at 47% 34%, var(--s-b) 0 .8px, transparent 1.4px);
+  background-size: 610px 470px, 530px 610px, 470px 390px, 690px 530px, 430px 710px, 570px 330px, 650px 490px, 730px 590px, 510px 450px,
+    590px 670px, 450px 550px, 370px 410px, 710px 630px, 490px 350px, 630px 570px, 410px 690px, 550px 430px, 670px 510px; }
+
+/* The buttons ride the bottom of the window in a narrow or short one (app.css): on the card
+   their ground is the card's. */
+@media (max-width: 759px), (max-height: 699px) {
+  .setup-card > .action-row, .setup-range.exercise > .action-row, .setup-range.exercise > .done-slot {
+    position: sticky; bottom: 0; z-index: 4; background: var(--surface); box-shadow: 0 calc(-1 * var(--s3)) var(--s3) var(--surface), 0 var(--s5) 0 var(--surface); }
+}
+@media (max-width: 759px) {
+  .setup-range .stage { height: clamp(240px, calc(100vh - 590px), 420px); }
+  .setup-card { padding: var(--s4); }
+  .setup-dots .path-name { display: none; }
+  .setup-dots li[data-state="now"] .path-name { display: inline; }
+}

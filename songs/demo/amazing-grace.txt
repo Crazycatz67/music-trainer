@@ -1,0 +1,51 @@
+#TITLE:Amazing Grace
+#ARTIST:Traditional
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:American hymn tune "New Britain", printed 1829; this form from "Virginia Harmony", 1831
+#LYRICIST:John Newton (died 1807), "Olney Hymns", 1779
+#PUBLICDOMAIN:Words printed in 1779 and tune in 1831: published before 1931.
+#SOURCE:Open Hymnal Project, http://openhymnal.org/Midi/Amazing_Grace-New_Britain.mid
+#SOURCESHA256:78e0ec32c4e2111d544685f28def8ea01c42987004672551adc5df44b26b73c9
+#LICENSE:Public domain (the source score; retrieved 2026-10-12)
+#BPM:160
+#GAP:2000
+: 0 7 2 A
+: 8 15 7 maz
+: 24 3 11 ing
+: 28 3 7 ~
+: 32 15 11  grace!
+: 48 7 9  How
+: 56 15 7  sweet
+: 72 7 4  the
+: 80 15 2  sound
+- 95
+: 96 7 2 That
+: 104 15 7  saved
+: 120 3 11  a
+: 124 3 7 ~
+: 128 15 11  wretch
+: 144 7 9  like
+: 152 39 14  me!
+- 191
+: 192 7 11 I
+: 200 11 14  once
+: 212 3 11 ~
+: 216 3 14  was
+: 220 3 11 ~
+: 224 15 7  lost,
+: 240 7 2  but
+: 248 11 4  now
+: 260 3 7 ~
+: 264 3 7  am
+: 268 3 4 ~
+: 272 15 2  found;
+- 287
+: 288 7 2 Was
+: 296 15 7  blind,
+: 312 3 11  but
+: 316 3 7 ~
+: 320 15 11  now
+: 336 7 9  I
+: 344 39 7  see.
+E

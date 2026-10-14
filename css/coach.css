@@ -1,0 +1,116 @@
+/* coach.css — Today's session path, the daily session's bar and the coach summary (spec
+   sections 4 and 8). Colours come from tokens.css only. Nothing here loops or flashes:
+   the only motion is the eased colour change of a button or a link. */
+
+/* ---------------------------------------------------------------- Today: the path */
+.path-live { display: flex; grid-template-columns: none; gap: 0; align-items: stretch; }
+.path-live li { flex: 1 1 0; min-width: 0; position: relative; }
+/* The line that joins the dots: behind them, from this dot to the next. */
+.path-live li + li::before { content: ""; position: absolute; top: 21px; right: calc(100% - 4px); width: calc(100% - 40px); height: 2px; background: var(--line); border-radius: 1px; }
+.path-live li[data-state="done"] + li::before { background: var(--gold); }
+.path-step { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 44px; padding: var(--s2) var(--s2) var(--s2) 0; background: none; border: 0; border-radius: var(--r-s); color: inherit; font: inherit; text-align: left; }
+button.path-step { cursor: pointer; }
+button.path-step:hover .path-name { text-decoration: underline; }
+.path-live .path-name { color: var(--muted); overflow-wrap: anywhere; }
+.path-live li[data-state="next"] .path-name { color: var(--text); font-weight: 600; }
+.path-live li[data-state="done"] .path-name { color: var(--text); }
+.path-live li[data-state="next"] .path-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 4px var(--accent-wash); }
+.path-live li[data-state="done"] .path-dot { background: var(--gold-fill); border-color: var(--gold); color: var(--gold-ink); }
+/* The coach at the end is a ring, not a numbered dot: it is where the path arrives. */
+.path-ring { border-width: 3px; border-color: var(--line-strong); }
+.streak[data-state="on"] .icon { color: var(--gold); }
+.card-session h2 .chip { vertical-align: 3px; }
+.card-session .action-row .reason { flex: 1 1 12em; }
+
+/* ---------------------------------------------------------------- the daily session's bar */
+/* Stays at the bottom of the window while the exercise scrolls under it, so Skip and Stop
+   are always in reach without moving the exercise's own layout. */
+/* One line of a known height: in a short or narrow window the exercise's own action row is
+   sticky at the bottom too (app.css), and has to stand on top of this bar instead of over it. */
+.daily-strip { position: sticky; bottom: var(--s2); z-index: 5; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s2) var(--s4); box-sizing: border-box; height: 58px; padding: var(--s2) var(--s4); overflow: hidden; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-m); box-shadow: var(--shadow-sheet); }
+.daily-strip > * { flex: none; }
+/* A finished step: Space is the bar's Continue, so no other button on the screen shows the key. */
+main:has(> .daily-strip[data-done="yes"]) > :not(.daily-strip) .keycap { display: none; }
+/* At every window size while the bar is there (review 5, fix 3): at 1440 x 800 the constellation's
+   "Hear the shape" sat half under the bar, because app.css only makes these rows sticky in a
+   short or narrow window. The row's own look is unchanged; it just never goes under the bar. */
+main:has(> .daily-strip) > .action-row, main:has(> .daily-strip) .exercise > .action-row, main:has(> .daily-strip) .exercise > .done-slot, main:has(> .daily-strip) .constellation > .figure-done { position: sticky; bottom: calc(58px + var(--s3)); z-index: 4; }
+main:has(> .daily-strip) > .action-row, main:has(> .daily-strip) .exercise > .action-row, main:has(> .daily-strip) .exercise > .done-slot { background: var(--bg); box-shadow: 0 calc(-1 * var(--s3)) var(--s3) var(--bg), 0 var(--s4) 0 var(--bg); }
+.daily-strip p { font: var(--t-small); color: var(--text); }
+.daily-where { font-weight: 600; }
+.daily-next { color: var(--muted); margin-left: auto; }
+.daily-bar { display: flex; gap: var(--s1); }
+.daily-bar span { width: 32px; height: 6px; border-radius: var(--r-pill); background: var(--line); }
+.daily-bar span[data-state="now"] { background: var(--accent); }
+.daily-bar span[data-state="done"] { background: var(--gold); }
+.daily-strip .btn { min-height: 40px; }
+
+/* ---------------------------------------------------------------- coach summary */
+.coach > * + * { margin-top: var(--s4); }
+.coach-when { color: var(--muted); font: var(--t-small); }
+.coach-stars { margin-left: auto; }
+.coach-headline { font: var(--t-h1); color: var(--text); }
+.card .coach-headline { color: var(--text); }
+.coach-fixes { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }
+.coach-fix { display: flex; flex-direction: column; align-items: flex-start; }
+.coach-fix h2, .coach-round-title { display: flex; align-items: flex-start; gap: var(--s2); font: var(--t-h2); color: var(--text); }
+.coach-fix h2 .icon, .coach-round-title .icon { flex: none; margin-top: 3px; color: var(--accent); }
+.coach-pic { display: block; max-width: 100%; height: auto; background: var(--stage); border-radius: var(--r-s); }
+.coach-pic-band { fill: var(--target-wash); }
+.coach-pic-mid { stroke: var(--target); stroke-width: 1; stroke-dasharray: 3 4; fill: none; }
+.coach-pic-line { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.card p.coach-number { color: var(--text); }
+.card p.coach-try { color: var(--text); font-weight: 600; }
+.coach-fix .btn { margin-top: auto; }
+.coach-good { color: var(--text); }
+.coach-foot { align-items: flex-start; justify-content: space-between; }
+.coach-all { flex: 1 1 320px; min-width: 0; }
+.coach-all summary { display: inline-flex; align-items: center; min-height: 40px; color: var(--accent); font-weight: 600; cursor: pointer; }
+.coach-table { width: 100%; margin-top: var(--s2); border-collapse: collapse; font: var(--t-small); }
+.coach-table th, .coach-table td { padding: var(--s2) var(--s3) var(--s2) 0; border-top: 1px solid var(--line); text-align: left; vertical-align: top; color: var(--text); }
+.coach-table thead th { border-top: 0; color: var(--muted); font-weight: 500; }
+.coach-table th .reason { display: block; font-weight: 400; }
+.coach-word { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.coach-honesty { display: flex; align-items: center; gap: 6px; }
+/* What a cent is: the first of the two small print lines, set off from the page by a rule.
+   The little swatch is the target band of the pictures above ("inside 25 counts as in tune");
+   it is decoration, the sentence says it all. */
+.coach-cents { display: flex; align-items: center; gap: 6px; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.coach-cents::before { content: ""; flex: none; box-sizing: border-box; width: 16px; height: 10px; border-block: 1px solid var(--target); border-radius: 1px; background: var(--target-wash); }
+.coach > .coach-cents + .coach-honesty { margin-top: var(--s1); }
+/* "Beside the target": the two notes are solid dots, like the voice dot, not pin-holed rings. */
+.icon-beside path { fill: currentColor; }
+/* Air above "Practise this" when the Try line wraps (review 5, finding 9). */
+.coach-fix .coach-try { margin-bottom: var(--s3); }
+/* One or two cards do not sit in a row drawn for three (review 5, finding 9): two share the
+   width; one runs the full width with its picture on the left and the words beside it. The picture
+   stays 160 x 64: the coach lab holds it to that size. */
+@media (min-width: 900px) {
+  .coach-fixes[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+  .coach-fixes[data-count="1"] { grid-template-columns: 1fr; }
+  .coach-fixes[data-count="1"] .coach-fix { display: grid; grid-template-columns: 160px minmax(0, 1fr); column-gap: var(--s5); justify-items: start; align-items: start; }
+  .coach-fixes[data-count="1"] .coach-fix > * { grid-column: 2; }
+  .coach-fixes[data-count="1"] .coach-fix .coach-pic { grid-column: 1; grid-row: 1 / span 4; align-self: center; margin-top: 0; }
+  .coach-fixes[data-count="1"] .coach-fix .btn { margin-top: 0; }
+}
+
+/* After a round: a few words under the exercise, never over the stage. */
+.coach-round { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); }
+.coach-round > * + * { margin-top: 0; }
+.coach-round h2 { font: var(--t-small); font-weight: 600; color: var(--muted); }
+.coach-round .coach-round-title { font: var(--t-body); font-weight: 600; }
+.coach-round .btn { margin-left: auto; }
+.coach-tip .coach-tip-line { color: var(--text); }
+
+@media (max-width: 899px) {
+  .coach-fixes { grid-template-columns: 1fr; }
+  .daily-next { margin-left: 0; }
+}
+@media (max-width: 759px) {
+  /* The words "step 2 of 3" stay; the bar and the next step's name make room for the buttons. */
+  .daily-bar, .daily-next { display: none; }
+  .daily-where { margin-right: auto; }
+  .path-live { flex-direction: column; gap: var(--s1); }
+  .path-live li + li::before { display: none; }
+  .path-step { flex-direction: row; align-items: center; gap: var(--s3); }
+}

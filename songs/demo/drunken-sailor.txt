@@ -1,0 +1,83 @@
+#TITLE:Drunken Sailor
+#ARTIST:Traditional
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Sea shanty, traditional
+#LYRICIST:Sea shanty, traditional
+#PUBLICDOMAIN:Tune and these words printed in "The Shanty Book, Part I" in 1921: published before 1931.
+#SOURCE:Wikipedia contributors, "Drunken Sailor" (de.wikipedia.org, revision 260438552), https://de.wikipedia.org/w/index.php?title=Drunken_Sailor&oldid=260438552&action=raw
+#SOURCESHA256:c9f9bb32502b88b9fd5f4b88634c18d9d8956a9445b461206a4dc54ef73989b5
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:176
+#GAP:2000
+: 0 3 9 What
+: 4 1 9  shall
+: 6 1 9  we
+: 8 3 9  do
+: 12 1 9  with
+: 14 1 9  the
+: 16 3 9  drun
+: 20 3 2 ken
+: 24 3 5  sai
+: 28 3 9 lor,
+- 31
+: 32 3 7 What
+: 36 1 7  shall
+: 38 1 7  we
+: 40 3 7  do
+: 44 1 7  with
+: 46 1 7  the
+: 48 3 7  drun
+: 52 3 0 ken
+: 56 3 4  sai
+: 60 3 7 lor,
+- 63
+: 64 3 9 what
+: 68 1 9  shall
+: 70 1 9  we
+: 72 3 9  do
+: 76 1 9  with
+: 78 1 9  the
+: 80 3 9  drun
+: 84 3 11 ken
+: 88 3 12  sai
+: 92 3 14 lor
+- 95
+: 96 3 12 ear
+: 100 3 9 ly
+: 104 3 7  in
+: 108 3 4  the
+: 112 7 2  mor
+: 120 7 2 ning?
+- 127
+: 128 7 9 Hoo
+: 136 5 9 ray,
+: 142 1 9  and
+: 144 3 9  up
+: 148 3 2  she
+: 152 3 5  ri
+: 156 3 9 ses,
+- 159
+: 160 7 7 hoo
+: 168 5 7 ray,
+: 174 1 7  and
+: 176 3 7  up
+: 180 3 0  she
+: 184 3 4  ri
+: 188 3 7 ses,
+- 191
+: 192 7 9 hoo
+: 200 5 9 ray,
+: 206 1 9  and
+: 208 3 9  up
+: 212 3 11  she
+: 216 3 12  ri
+: 220 3 14 ses
+- 223
+: 224 3 12 ea
+: 228 3 9 rly
+: 232 3 7  in
+: 236 3 4  the
+: 240 7 2  mor
+: 248 7 2 ning.
+E

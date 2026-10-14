@@ -1,0 +1,181 @@
+/* sky.css — the star dome's HTML layer: place pills, edge markers, the Start button, the
+   strip inside a place, the key hint, and the dome tokens. Spec: docs/design/specs/2026-10-12-sky-dome.md (sections 5 and appendix).
+   Needs css/tokens.css. Built by js/app/sky.js inside an element with class "sky".
+
+   The dome tokens live here until the overseer moves them into tokens.css (slice 1 may
+   not edit existing files). They are decoration only: never put bare text on them. */
+
+:root,
+[data-theme="dusk"] {
+  --sky-zenith: #080c18;
+  --sky-horizon: #1f2d6b;
+  --sky-ground: #05070f;
+  --sky-dim: .35;
+}
+[data-theme="dawn"] {
+  /* A real early sky (review 6: Dawn read as a blank cream page): pale blue overhead, peach
+     at the horizon, hills you can see, and a moon whose lit part is the lightest thing there. */
+  --sky-zenith: #dbe5f4;
+  --sky-horizon: #f6dcc2;
+  --sky-ground: #c7bca9;
+  --sky-moonlit: #fffdf6;
+  --sky-dim: .35;
+}
+
+.sky { position: fixed; inset: 0; overflow: hidden; background: var(--bg); color: var(--text); font: var(--t-body); }
+
+/* The dome. No opacity, filter or backdrop-filter on it, ever: the browser would blend a
+   full-window layer on every frame (spec section 9). Fades happen on the layers above. */
+.sky-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.sky[data-over] .sky-canvas { cursor: pointer; }        /* a figure is under the pointer: a press opens its place */
+.sky[data-drag="on"] .sky-canvas { cursor: grabbing; }
+.sky:is([data-where="going"], [data-where="place"]) .sky-canvas { cursor: default; }
+.sky[data-mode="links"] .sky-canvas,
+.sky[data-mode="links"] .sky-fade,
+.sky[data-mode="links"] .sky-veil { display: none; }
+
+/* Calm motion's cross-fade: a still copy of the old picture, faded away over 200 ms. */
+.sky-fade { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
+.sky-fade[data-on="hold"] { opacity: 1; }
+.sky-fade[data-on="out"] { opacity: 0; transition: opacity var(--d-base) linear; }
+
+/* Covers the canvas until the dome has drawn its first frame, then fades away. */
+.sky-veil { position: absolute; inset: 0; background: var(--bg); pointer-events: none; transition: opacity var(--d-reveal) var(--ease), visibility 0s linear var(--d-reveal); }
+.sky[data-loaded] .sky-veil { opacity: 0; visibility: hidden; }
+.sky[data-calm] .sky-veil { transition-duration: var(--d-base), 0s; transition-delay: 0s, var(--d-base); }
+
+/* ---- places ------------------------------------------------------------------------- */
+/* The nav covers the window but lets drags through to the sky; only the pills take presses. */
+.sky-places { position: absolute; inset: 0; pointer-events: none; transition: opacity var(--d-base) var(--ease); }
+
+/* Travelling into a place: the places, the hint and the first-visit line fade out in the
+   first 200 ms and come back over the last 200 ms of the way home. */
+.sky[data-away] :is(.sky-places, .sky-hint, .sky-first) { opacity: 0; }
+.sky[data-away] :is(.sky-place, .sky-start) { pointer-events: none; }
+
+.sky-place {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: var(--s2);
+  box-sizing: border-box; min-height: 44px; padding: var(--s2) var(--s3);
+  /* 88 %: with a full-bright star straight behind, --muted text still passes (spec section 5). */
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 1px solid transparent; border-radius: var(--r-m);
+  color: var(--text); text-decoration: none; white-space: nowrap; cursor: pointer;
+  transition: opacity var(--d-quick) var(--ease), border-color var(--d-base) var(--ease), scale var(--d-quick) var(--ease);
+}
+.sky-place:hover, .sky-place:focus-visible { border-color: var(--accent); }
+.sky-place:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.sky-place:active { scale: .98; }
+.sky-place[data-fade="out"] { opacity: 0; }
+.sky-place[data-snap] { transition: none; }
+
+.sky-words { display: flex; flex-direction: column; min-width: 0; }
+.sky-name { font: var(--t-h2); }
+.sky-plain, .sky-state { font: var(--t-small); color: var(--muted); }
+.sky-state { font-variant-numeric: tabular-nums; }
+.sky-state:empty { display: none; }
+.sky-behind { display: none; }
+.sky-arrow { display: none; flex: none; width: 24px; height: 24px; color: var(--muted); }
+.sky-arrow .sky-arrow-straight { display: block; }
+.sky-arrow .sky-arrow-around { display: none; }
+
+/* In the dome a pill is placed by a transform from the top-left corner (transform writes
+   only: no layout work per frame). */
+.sky[data-mode="dome"] .sky-place { position: absolute; left: 0; top: 0; will-change: transform; }
+
+/* Open: the label follows its figure, so it must not lag behind the sky. */
+.sky-place[data-shape="open"] .sky-words { gap: 0; }
+/* The Lyre's label sits to the left of its figure and lines up against it. */
+.sky[data-mode="dome"] .sky-place[data-shape="open"][data-place="songs"] .sky-words { text-align: right; }
+.sky[data-mode="dome"] .sky-place[data-shape="open"]:is([data-place="today"], [data-place="sing"], [data-place="progress"]) .sky-words { text-align: center; }
+
+/* Docked: the edge marker. 48 px tall, arrow on the side nearest the edge; a move along
+   the edge is eased. */
+.sky-place[data-shape="docked"] {
+  height: 48px; min-height: 48px; padding: 0 var(--s3);
+  transition: transform var(--d-base) var(--ease), opacity var(--d-quick) var(--ease), border-color var(--d-base) var(--ease), scale var(--d-quick) var(--ease);
+}
+.sky-place[data-shape="docked"][data-snap] { transition: none; }
+.sky-place[data-shape="docked"] .sky-arrow { display: block; }
+.sky-place[data-shape="docked"] .sky-name { font: var(--t-body); font-weight: 600; line-height: 1.25rem; }
+.sky-place[data-shape="docked"] .sky-plain { line-height: 1.125rem; }
+.sky-place[data-shape="docked"] .sky-state { display: none; }
+.sky-place[data-shape="docked"][data-edge="right"] { flex-direction: row-reverse; }
+.sky-place[data-shape="docked"][data-edge="right"] .sky-words { text-align: right; }
+.sky-place[data-behind] .sky-behind { display: inline; }
+.sky-place[data-arrow="right"] .sky-arrow-straight { rotate: 180deg; }
+.sky-place[data-arrow="up"] .sky-arrow-straight { rotate: 90deg; }
+.sky-place[data-arrow="down"] .sky-arrow-straight { rotate: -90deg; }
+.sky-place[data-arrow="around"] .sky-arrow .sky-arrow-straight { display: none; }
+.sky-place[data-arrow="around"] .sky-arrow .sky-arrow-around { display: block; }
+/* The turn-around arrow is drawn heading left; on the right edge it is mirrored. */
+.sky-place[data-arrow="around"][data-edge="right"] .sky-arrow-around { scale: -1 1; }
+
+/* 900 to 1099 px wide: open labels drop the state line (it stays in the tooltip and the
+   spoken name). */
+@media (max-width: 1099px) {
+  .sky[data-mode="dome"] .sky-place[data-shape="open"] .sky-state { display: none; }
+}
+
+/* ---- the one main button: under Tonight's label while Tonight is in view ------------- */
+.sky-start { pointer-events: auto; visibility: hidden; opacity: 0; transition: opacity var(--d-quick) var(--ease), visibility 0s linear var(--d-quick); }
+.sky-start[hidden] { display: none; }       /* .btn sets display, which would beat the attribute */
+.sky-start[data-shown] { visibility: visible; opacity: 1; transition-delay: 0s; }
+.sky-start[data-shown][data-fade="out"] { opacity: 0; }
+.sky-start[data-snap] { transition: none; }
+.sky[data-mode="dome"] .sky-start { position: absolute; left: 0; top: 0; will-change: transform; }
+/* Placed by an inline transform, which beats .btn's own hover and press transforms; the
+   press still shows through the separate scale property. */
+.sky[data-mode="dome"] .sky-start:active { scale: .98; }
+.sky[data-mode="links"] .sky-start { align-self: flex-start; }
+
+/* ---- inside a place: the slim strip -------------------------------------------------- */
+.sky-strip {
+  position: absolute; left: 0; right: 0; top: 0; height: 48px; padding: 0 var(--s3);
+  display: flex; align-items: center; gap: var(--s3);
+  opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base);
+}
+.sky-strip[data-on] { opacity: 1; visibility: visible; transition-delay: 0s; }
+.sky[data-mode="links"] .sky-strip { display: none; }
+.sky-strip-title {
+  margin: 0; padding: 2px var(--s3); display: flex; align-items: baseline; gap: var(--s2);
+  /* On a pill for the same reason as the places: the dome is never behind bare text. */
+  background: color-mix(in srgb, var(--bg) 88%, transparent); border-radius: var(--r-m);
+}
+.sky-strip-title:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.sky-strip-name { font: var(--t-h2); }
+.sky-strip-plain { font: var(--t-small); color: var(--muted); }
+
+/* ---- key hint ----------------------------------------------------------------------- */
+.sky-hint {
+  position: absolute; left: var(--s3); bottom: var(--s2); margin: 0; padding: 2px var(--s2);
+  font: var(--t-tiny); color: var(--quiet); pointer-events: none;
+  /* --quiet is a text colour for --bg, not for a sky with stars behind it. */
+  background: color-mix(in srgb, var(--bg) 88%, transparent); border-radius: var(--r-s);
+}
+
+.sky-hint { transition: opacity var(--d-base) var(--ease); }
+/* First visit only: one line above the hint, gone for good after the first turn. */
+.sky-first {
+  position: absolute; left: var(--s3); bottom: calc(var(--s2) + 30px); margin: 0; padding: 2px var(--s2);
+  font: var(--t-small); color: var(--muted); pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); border-radius: var(--r-s);
+  transition: opacity var(--d-slow) var(--ease);
+}
+.sky-first[data-gone] { opacity: 0; }
+
+/* ---- plain links: no WebGL, a narrow window, a lost context ------------------------- */
+/* The same five links in a column on the flat page colour. No message: nothing is broken. */
+.sky[data-mode="links"] { overflow: auto; }
+.sky[data-mode="links"] .sky-places {
+  position: static; pointer-events: auto;
+  display: flex; flex-direction: column; gap: var(--s3);
+  width: min(420px, 100% - 2 * var(--s4)); margin: 0 auto; padding: var(--s7) 0 var(--s8);
+}
+.sky[data-mode="links"] .sky-place { background: var(--surface); border-color: var(--line); padding: var(--s3) var(--s4); white-space: normal; }
+.sky[data-mode="links"] .sky-place:hover, .sky[data-mode="links"] .sky-place:focus-visible { border-color: var(--accent); }
+.sky[data-mode="links"] .sky-hint { position: fixed; background: var(--bg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sky-veil { transition-duration: var(--d-base), 0s; transition-delay: 0s, var(--d-base); }
+}

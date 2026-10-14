@@ -1,0 +1,54 @@
+#TITLE:Red River Valley
+#ARTIST:Traditional
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:North American traditional; in print by 1927
+#LYRICIST:North American traditional; in print by 1927
+#PUBLICDOMAIN:Tune and these words printed in "The American Songbag" in 1927: published before 1931.
+#SOURCE:Wikipedia contributors, "Red River Valley (song)" (en.wikipedia.org, revision 1378721571), https://en.wikipedia.org/w/index.php?title=Red_River_Valley_(song)&oldid=1378721571&action=raw
+#SOURCESHA256:d5f1d9263a8ffc3b530d5f0f040990478f1c4c566bfa33778f2b59700a29a564
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:168
+#GAP:2000
+: 0 3 2 From
+: 4 3 7  this
+: 8 7 11  val
+: 16 3 11 ley
+: 20 3 11  they
+: 24 7 11  say
+: 32 3 9  you
+: 36 3 11  are
+: 40 7 9  go
+: 48 15 7 ing.
+- 63
+: 64 3 11 We
+: 68 3 11  will
+: 72 7 11  miss
+: 80 3 7  your
+: 84 3 11  bright
+: 88 7 14  eyes
+: 96 3 12  and
+: 100 3 11  sweet
+: 104 23 9  smile,
+- 127
+: 128 3 14 for
+: 132 3 12  they
+: 136 7 11  say
+: 144 3 11  you
+: 148 3 9  are
+: 152 7 7  ta
+: 160 3 9 king
+: 164 3 11  the
+: 168 7 14  sun
+: 176 15 12 shine,
+- 191
+: 192 3 4 that
+: 196 3 4  has
+: 200 7 2  bright
+: 208 3 6 ened
+: 212 3 7  our
+: 216 7 9  path
+: 224 3 11 way
+: 228 3 9  a
+: 232 31 7  while.
+E

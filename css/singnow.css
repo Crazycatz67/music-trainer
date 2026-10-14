@@ -1,0 +1,425 @@
+/* singnow.css — the standalone "Sing a song" page (sing.html, js/app/singnow.js).
+   Colours, type and spacing come from tokens.css; buttons, chips, cards, sheets and fields
+   from app.css. Only what this page adds is here. Motion is eased and nothing flashes: the
+   one loop is the recording dot's slow breath (song-mode spec 7.2).
+   Calm motion (the page's data-calm="on", which also follows the system's reduced-motion
+   setting): the words band cross-fades in place instead of sliding, and the count's number
+   changes without its small ease. */
+
+:root {
+  /* Recording red is the one colour the tokens do not have yet (the song-mode spec names
+     it --rec). Kept local until the tokens gain it. */
+  --rec: #f87171;
+  --rec-ink: #2a0606;
+  --rec-wash: color-mix(in srgb, var(--rec) 22%, transparent);
+}
+:root[data-theme="dawn"] { --rec: #c81e1e; --rec-ink: #fff5f5; }
+
+.singnow-page .topbar { gap: var(--s4); }
+.singnow-place { color: var(--muted); font: var(--t-small); }
+.singnow-page .topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
+#sing-root { max-width: 1280px; }
+#sing-root section > * + * { margin-top: var(--s3); }
+.sn-error { color: var(--error); }
+
+/* ---- library */
+.sn-drop {
+  display: grid; justify-items: center; gap: var(--s2); padding: var(--s6) var(--s4);
+  border: 2px dashed var(--line-strong); border-radius: var(--r-m, 12px); background: var(--surface);
+  text-align: center; cursor: pointer; transition: border-color var(--d-base) var(--ease), background var(--d-base) var(--ease);
+}
+.sn-drop p, .sn-drop h2 { margin: 0; }
+.sn-drop-title { font: var(--t-h1); }
+.sn-drop > svg { color: var(--target); }
+.sn-drop.is-over { border-style: solid; border-color: var(--accent); background: var(--accent-wash); }
+.sn-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sn-drop.is-small { padding: var(--s3) var(--s4); grid-template-columns: auto auto auto 1fr; justify-items: start; align-items: center; text-align: left; column-gap: var(--s4); }
+.sn-drop.is-small > svg { width: 28px; height: 28px; }
+.sn-drop.is-small .sn-drop-title { font: var(--t-h2); }
+.sn-drop.is-small .reason:last-child { grid-column: 1 / -1; }
+
+.sn-need h2 { margin: 0; }
+.sn-need progress, .sn-job progress { width: 100%; accent-color: var(--accent); }
+.sn-queue, .sn-songs, .sn-takes, .sn-look-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.sn-job { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(80px, 1fr) auto auto; align-items: center; gap: var(--s3); }
+.sn-job strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-song { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s4); }
+.sn-song-main { display: grid; gap: 2px; min-width: 0; }
+.sn-song-title { font: var(--t-h2); overflow: hidden; text-overflow: ellipsis; }
+.sn-song-artist { color: var(--muted); }
+.sn-takes { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: var(--s2); }
+.sn-take { display: flex; align-items: center; gap: var(--s3); }
+.sn-take > span { flex: 1; color: var(--muted); font: var(--t-small); }
+
+/* ---- sing screen: one column; the stage takes what the window has left (see .sn-stage) */
+.sn-sing:not([hidden]) { display: grid; grid-template-rows: auto; gap: var(--s2); grid-auto-rows: auto; align-content: start; }
+#sing-root .sn-sing > * { margin-top: 0; }
+.sn-sing .title-row h1 { margin: 0; font: var(--t-h2); outline: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-artist { white-space: nowrap; }
+
+/* The prompt box ("Your turn", "Rest", "Get ready"). Owner 2026-10-13: it "keeps shifting
+   around ... flashing and distracting". Its box is ONE size whatever it says (a fixed width
+   and height, words on one row), so nothing under it or beside it ever moves; a heavier
+   edge is an inset shadow, not a wider border, for the same reason; and its colours take
+   the slow ease. Its words change at most once a second (singnow.js paintLamp). */
+.sn-lamp {
+  justify-self: center; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  width: min(440px, 100%); height: 48px; padding: 0 var(--s4); border-radius: 999px; white-space: nowrap; overflow: hidden;
+  border: 1.5px solid var(--quiet); color: var(--muted); font: var(--t-h2); font-variant-numeric: tabular-nums;
+  transition: background var(--d-slow) var(--ease), color var(--d-slow) var(--ease), border-color var(--d-slow) var(--ease), box-shadow var(--d-slow) var(--ease);
+}
+.sn-lamp-icon { display: inline-flex; flex: none; }
+.sn-lamp-text { overflow: hidden; text-overflow: ellipsis; }
+.sn-lamp[data-state="turn"] { background: var(--target); border-color: var(--target); color: var(--bg); }
+.sn-lamp[data-state="ready"], .sn-lamp[data-state="count"] { border-color: var(--text); color: var(--text); box-shadow: inset 0 0 0 .5px var(--text); }
+.sn-lamp[data-state="tap"] { border-color: var(--accent); color: var(--text); }
+
+/* The stage takes what the window has left once everything under it has its place, so the
+   words, the music controls and the sliders are in sight without scrolling. The numbers are
+   the rest of the screen, measured: 620 px while singing, 684 px with the "no words" strip
+   under the words band, 746 px in the take review (each holds the 16 px star row). A short
+   window gets the smallest stage, never a hidden row; with the strip showing that floor is
+   152 px, not 176, or the sticky music row lies over the scrub bar at 1024 x 640.
+   A new row on this screen must add its height to these three numbers. */
+.sn-stage { --stage-h: clamp(176px, calc(100vh - 620px), 420px); --end-h: 216px; position: relative; height: var(--stage-h); border-radius: var(--r-m, 12px); overflow: hidden; background: var(--stage); transition: box-shadow var(--d-slow) var(--ease); }
+.sn-sing:has(> .sn-auto[data-kind="none"]:not([hidden])) .sn-stage, .sn-sing:has(> .sn-auto[data-kind="looking"]:not([hidden])) .sn-stage { --stage-h: clamp(152px, calc(100vh - 684px), 420px); }
+.sn-sing:has(.sn-review:not([hidden])) .sn-stage { --stage-h: clamp(160px, calc(100vh - 746px), 420px); }
+/* The picture keeps role="img"; the end panel beside it is a region with real buttons. */
+.sn-stage-pic { position: absolute; inset: 0; transition: opacity var(--d-slow) var(--ease); }
+.sn-canvas { display: block; width: 100%; height: 100%; }
+/* Recording: a red frame inside the stage's edge, eased in (never a flash). */
+.sn-stage.is-recording { box-shadow: inset 0 0 0 3px var(--rec), inset 0 0 12px 3px var(--rec-wash); }
+.sn-readout {
+  position: absolute; left: calc(30% + 16px); top: var(--s3); display: grid; gap: 2px; padding: var(--s2) var(--s3);
+  border-radius: var(--r-s); background: color-mix(in srgb, var(--surface) 88%, transparent); border-left: 4px solid var(--quiet);
+  font: var(--t-small); font-variant-numeric: tabular-nums; pointer-events: none; min-width: 190px;
+}
+.sn-readout strong { font: var(--t-h2); }
+/* One message at a time on the stage: the readout steps aside while the count is up. */
+.sn-readout { transition: opacity var(--d-base) var(--ease); }
+.sn-stage:has(.sn-count.is-on) .sn-readout { opacity: 0; }
+.sn-readout[data-kind="in"] { border-left-color: var(--good); }
+.sn-readout[data-kind="close"] { border-left-color: var(--close); }
+.sn-readout[data-kind="off"] { border-left-color: var(--off); }
+.sn-readout[data-kind="free"] { border-left-color: var(--accent); }
+
+/* The count: after a press while the song waits, and before a phrase that follows an
+   intro or a rest. It sits just LEFT of the now line (30 % across), its edge against the
+   line: beside where the eye already rests, over the part of the stage that has gone by,
+   so the tune about to be sung stays in full view. It eases in and out, never a jump; its
+   number is sized from the window so the card fits the smallest stage. */
+.sn-count {
+  position: absolute; right: calc(70% + var(--s3)); top: 50%; transform: translateY(-50%); display: grid; justify-items: center; gap: var(--s1);
+  box-sizing: border-box; min-width: min(200px, calc(30% - 2 * var(--s3))); max-width: calc(30% - 2 * var(--s3)); padding: var(--s3) var(--s4); border-radius: var(--r-m, 12px); text-align: center; pointer-events: none;
+  background: color-mix(in srgb, var(--surface) 94%, transparent); border: 2px solid var(--text); box-shadow: 0 6px 24px color-mix(in srgb, var(--bg) 60%, transparent);
+  opacity: 0; transition: opacity var(--d-base) var(--ease);
+}
+.sn-count.is-on { opacity: 1; }
+.sn-count-cap { font: var(--t-h2); color: var(--text); text-wrap: balance; }
+.sn-count-num { font: 700 clamp(3.5rem, 9vh, 5rem)/1 var(--font-ui); font-variant-numeric: tabular-nums; color: var(--text); }
+.sn-count-beads { display: flex; gap: var(--s2); min-height: 12px; }
+.sn-count-beads i { box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--text); transition: background var(--d-base) var(--ease); }
+.sn-count-beads i.is-full { background: var(--text); }
+
+/* The words band. Its box never changes size, so a line change moves nothing else on the
+   screen: the rows are laid over it and take turns (js: showBand). A row's place, size and
+   colour belong to its role, and a change of role is eased:
+     cur   the line being sung          next  the line to come, under the marker
+     in    below, unseen (a new next line starts here)      out  above, unseen (the old line leaves here) */
+.sn-words { display: grid; align-content: center; justify-items: center; min-height: 104px; }
+.sn-roll { --roll: 420ms; position: relative; width: min(960px, 100%); height: 96px; overflow: hidden; }
+.sn-row {
+  position: absolute; left: 0; right: 0; top: 0; margin: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font: 600 1.25rem/1.625rem var(--font-ui); color: var(--muted); opacity: 0; transform: translateY(92px);
+  transition: transform var(--roll) var(--ease), opacity var(--roll) var(--ease), font-size var(--roll) var(--ease), line-height var(--roll) var(--ease), color var(--roll) var(--ease);
+}
+.sn-row[data-role="cur"] { font-size: 2.5rem; line-height: 2.875rem; font-weight: 700; color: var(--text); opacity: 1; transform: translateY(0); }
+/* Long lines: the words being sung are never cut off. Over 44 letters: 28 px on one line.
+   Over 64: 22 px on up to two lines, which still end above the marker (2 x 26 = 52 of 54 px),
+   so the band's box and everything under it stay still. A line too long even for two rows
+   is cut at the second (rare: about 170 letters at full width). */
+.sn-row[data-role="cur"].is-long { font-size: 1.75rem; }
+.sn-row[data-role="cur"].is-xlong { font-size: 1.375rem; line-height: 1.625rem; white-space: normal; text-wrap: balance; max-height: 3.25rem; }
+/* The line is over and the singer rests: it steps back so the eye goes to the next one. */
+.sn-row[data-role="cur"].is-done { opacity: .55; }
+.sn-row[data-role="next"] { opacity: 1; transform: translateY(66px); }
+/* The lead-in cue: in its last moment before starting, the next line lifts, grows a little
+   and takes the text colour (size and place carry it, not colour alone). */
+.sn-row[data-role="next"].is-cued { color: var(--text); font-size: 1.5rem; transform: translateY(60px); }
+/* The old line leaves faster than the new one arrives (its fade is done in 200 ms of the
+   420), so two bright lines are not read through each other on the way. */
+.sn-row[data-role="out"] { font-size: 2.5rem; line-height: 2.875rem; font-weight: 700; color: var(--text); opacity: 0; transform: translateY(-26px); transition-duration: var(--roll), 200ms, var(--roll), var(--roll), var(--roll); }
+.sn-row[data-role="out"].is-long { font-size: 1.75rem; }
+.sn-row[data-role="out"].is-xlong { font-size: 1.375rem; line-height: 1.625rem; }
+:root[data-calm="on"] .sn-row { transition: opacity var(--roll) var(--ease); }
+:root[data-calm="on"] .sn-row[data-role="next"].is-cued { font-size: 1.25rem; font-weight: 700; transform: translateY(66px); }
+/* A cross-fade in place (a jump in the song; every change in calm motion): the old words
+   leave quickly and the new ones wait for them, so two lines are never read through each
+   other. These three come after the calm rule and match it in weight, so they hold there too. */
+.sn-roll .sn-row.is-hidden { opacity: 0; transition-duration: 160ms; }
+.sn-roll .sn-row.is-fresh { transition-delay: 140ms; }
+.sn-roll .sn-row.is-snap { transition: none; }
+.sn-marker { position: absolute; left: 50%; top: 54px; margin-left: calc(min(640px, 80%) / -2); width: min(640px, 80%); height: 4px; border-radius: 2px; background: var(--line-strong); }
+.sn-marker-fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--text); }
+.sn-marker-star { position: absolute; top: 50%; transform: translate(-50%, -54%); color: var(--gold); font-size: 16px; line-height: 1; }
+
+.sn-hold { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-s); background: var(--raised); border: 1px solid var(--rec); }
+.sn-hold[hidden] { display: none; }
+
+.sn-scrub-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--s3); }
+/* The time labels sit beside the track (the bar's top 40 px), not beside the star row. */
+.sn-time { font: var(--t-small); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 3ch; align-self: start; line-height: 40px; }
+/* 40 px of track and head, then the 16 px star row (sky spec 2.3). */
+.sn-scrub { position: relative; height: 56px; cursor: pointer; touch-action: none; border-radius: var(--r-s); }
+.sn-scrub:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sn-scrub-track { position: absolute; left: 0; right: 0; top: 12px; height: 16px; border-radius: 8px; background: var(--raised); overflow: hidden; }
+.sn-scrub-blocks, .sn-scrub-played { position: absolute; inset: 0; }
+.sn-scrub-block { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--target) 55%, transparent); border-left: 1px solid var(--target); }
+/* The part already played: brighter, by a wash laid over the blocks. */
+.sn-scrub-played { right: auto; background: color-mix(in srgb, var(--text) 22%, transparent); }
+.sn-scrub-take { position: absolute; top: 0; height: 5px; background: var(--good); }
+.sn-scrub-take[hidden] { display: none; }
+.sn-scrub-head { position: absolute; top: 4px; width: 4px; height: 32px; margin-left: -2px; border-radius: 2px; background: var(--text); pointer-events: none; }
+.sn-scrub-head::after { content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--text); }
+
+.sn-transport { justify-content: center; position: sticky; bottom: 0; background: var(--bg); padding: var(--s2) 0; }
+.sn-transport .btn[hidden] { display: none; }
+.sn-gap { flex: 0 1 var(--s6); }
+.sn-primary { min-width: 220px; justify-content: center; }
+.sn-rec-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--rec); margin-right: 6px; vertical-align: -1px; }
+.btn.is-rec { background: var(--rec); border-color: var(--rec); color: var(--rec-ink); }
+.btn.is-rec .sn-rec-dot { background: var(--rec-ink); border-radius: 2px; }
+.sn-why { text-align: center; margin: 0; min-height: 1.25rem; }
+
+/* Sound and fit: the mix (Music and Singer side by side, their three quick settings under
+   them), Volume, Octave, then the words column (the Words button with the credit for
+   looked-up words under it). The three controls span both of that column's rows. */
+.sn-sound { display: grid; grid-template-columns: minmax(300px, 2fr) minmax(120px, .8fr) minmax(250px, 1.3fr) minmax(150px, .8fr); gap: var(--s2) var(--s5); align-items: start; padding-top: var(--s2); border-top: 1px solid var(--line); }
+/* The mix has its own rule, never the div catch-all: that one weighed (0,3,1) against the
+   narrow layout's `.sn-sound > .sn-mix` (0,2,0) and used to win under 900 px, laying the mix
+   over two rows with Volume and Words drawn on top of it (design review 2026-10-14). */
+.sn-sound > .field, .sn-sound > div:not(.sn-sound-end):not(.sn-auto):not(.sn-mix) { grid-row: 1 / span 2; }
+.sn-sound > .sn-mix { grid-row: 1 / span 2; }
+.sn-sound > .sn-sound-end { grid-column: 4; grid-row: 1; align-self: start; padding-top: var(--s5); }
+.sn-mix { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s5); align-items: start; }
+.sn-mix > * + * { margin-top: 0; }
+/* A slider's value sits on its label's row, at the right: the number moves as the slider
+   does, and the row under the slider is free (the quick settings use it, so the mix is no
+   taller than the two sliders with their words were). */
+.sn-mix > .field, .sn-sound > .field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: var(--s1) var(--s2); }
+.sn-mix > .field > * + *, .sn-sound > .field > * + * { margin-top: 0; }
+.sn-mix > .field > .reason, .sn-sound > .field > .reason { color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-mix > .field > input, .sn-sound > .field > input { grid-column: 1 / -1; }
+/* Three equal buttons: the tick on the chosen one moves no neighbour. */
+.sn-mix-marks { grid-column: 1 / -1; }
+.sn-mix-marks .btn { flex: 1 1 0; white-space: nowrap; }
+.sn-sound[hidden], .sn-review[hidden], .sn-tap[hidden], .sn-keep[hidden] { display: none; }
+.sn-sound p { margin: var(--s1) 0 0; }
+
+/* The take review is one band: "Keep this take?" at the left while it is still asked, then
+   Balance and Timing, then the save row. Kept short so Balance is in sight at laptop sizes. */
+.sn-review { display: grid; grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); gap: var(--s3) var(--s5); align-items: start; padding-top: var(--s2); border-top: 1px solid var(--line); }
+.sn-review > * { grid-column: 1 / -1; }
+.sn-review p { margin: 0; }
+.sn-review > .sn-keep:not([hidden]) { grid-column: 1; }
+.sn-review > .sn-keep:not([hidden]) + .sn-review-row { grid-column: 2; }
+.sn-review-row { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--s5); align-items: start; }
+/* Balance: label, the words for where it is, and the number on one row; the slider; then the
+   three quick marks under its ends and middle. The chosen mark is filled and ticked. */
+.sn-balance { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0 var(--s3); }
+.sn-balance > * + * { margin-top: 0; }
+.sn-balance > .field-label { grid-area: 1 / 1; }
+.sn-balance > .reason { grid-area: 1 / 2; color: var(--text); }
+.sn-balance > .sn-balance-num { grid-area: 1 / 3; color: var(--muted); }
+.sn-balance > input { grid-area: 2 / 1 / 3 / -1; }
+.sn-balance > .sn-marks { grid-area: 3 / 1 / 4 / -1; }
+.sn-marks { display: flex; justify-content: space-between; gap: var(--s2); }
+.sn-marks .btn { min-height: 32px; border-color: var(--line-strong); color: var(--text); padding: 0 var(--s3); }
+.sn-marks .btn[aria-pressed="true"] { border-color: var(--text); background: var(--raised); }
+.sn-marks .btn[aria-pressed="true"]::before { content: "✓"; }
+.sn-balance-num { font-variant-numeric: tabular-nums; }
+.sn-sound .field .reason { font-variant-numeric: tabular-nums; }
+.sn-keep { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3); border-radius: var(--r-s); background: var(--raised); }
+.sn-keep > strong, .sn-keep > .reason { flex: 1 0 100%; }
+.sn-nudge-words { min-width: 13ch; text-align: center; font-variant-numeric: tabular-nums; }
+.sn-tap { justify-content: center; }
+.sn-tap p { margin: 0; }
+
+/* Recording: the pill at the top centre, over the title bar. */
+.sn-rec-pill {
+  position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30;
+  display: inline-flex; align-items: center; padding: 6px var(--s4); border-radius: 999px;
+  background: var(--rec); color: var(--rec-ink); font: var(--t-body); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.sn-rec-pill[hidden] { display: none; }
+.sn-rec-pill .sn-rec-dot { background: var(--rec-ink); animation: sn-breathe var(--d-breathe) var(--ease-in-out) infinite; }
+@keyframes sn-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .7; } }
+
+/* ---- the words sheet */
+.sn-words-sheet { display: grid; gap: var(--s3); }
+.sn-words-sheet p, .sn-words-sheet h3 { margin: 0; }
+.sn-words-cards { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.sn-words-cards .card, .sn-words-have { display: grid; gap: var(--s2); align-content: start; }
+/* The two ways in: their buttons share one baseline whatever the length of the text above. */
+.sn-words-cards .card { grid-template-rows: auto 1fr auto; }
+.sn-words-cards .card .btn { align-self: end; }
+.sn-paste-text { width: 100%; min-height: 220px; font: var(--t-body); padding: var(--s2); resize: vertical; }
+.sn-look-list .card { display: grid; gap: var(--s1); }
+.sn-authors { border-top: 1px solid var(--line); padding-top: var(--s2); }
+
+@media (max-width: 1100px) {
+  .sn-words-cards { grid-template-columns: 1fr; }
+  .sn-job { grid-template-columns: 1fr auto; }
+  .sn-row[data-role="cur"], .sn-row[data-role="out"] { font-size: 1.75rem; }
+  /* Narrow: a long line takes the two-row form already (28 px would run off the side). */
+  .sn-row[data-role="cur"].is-long, .sn-row[data-role="cur"].is-xlong { font-size: 1.375rem; line-height: 1.625rem; white-space: normal; text-wrap: balance; max-height: 3.25rem; }
+  .sn-row[data-role="out"].is-long, .sn-row[data-role="out"].is-xlong { font-size: 1.375rem; line-height: 1.625rem; }
+  .sn-count-cap { font: var(--t-small); font-weight: 600; }
+  .sn-count { padding: var(--s2) var(--s3); }
+  /* The music controls stay on one row down to about 1000 px. */
+  .sn-transport { gap: var(--s2); }
+  .sn-gap { display: none; }
+  .sn-primary { min-width: 176px; }
+}
+
+/* ---- the automatic words lookup: the notice in the library, the quiet line by the sliders */
+.sn-words-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4); border-left: 4px solid var(--accent); }
+.sn-words-note[hidden], .sn-auto[hidden] { display: none; }
+.sn-words-note p { margin: 0; flex: 1 1 320px; }
+.sn-words-note > svg { color: var(--accent); flex: none; width: 20px; height: 20px; }
+/* Found: a quiet credit under the Words button, costing no height. */
+.sn-auto { grid-column: 4; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s1); min-height: 0; }
+.sn-auto .btn { min-height: 32px; }
+/* Looking, or nothing found: a strip across the top of the row, where it is seen. The
+   sentence, the title to correct and the button share one row and wrap when narrow. */
+.sn-auto[data-kind="none"], .sn-auto[data-kind="looking"] { grid-column: 1 / -1; grid-row: 1; justify-content: flex-start; gap: var(--s2) var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-s); background: var(--raised); border-left: 4px solid var(--quiet); color: var(--text); }
+.sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > .field,
+.sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > div:not(.sn-sound-end):not(.sn-auto):not(.sn-mix) { grid-row: 2 / span 2; }
+.sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > .sn-mix { grid-row: 2 / span 2; }
+.sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > .sn-sound-end { grid-row: 2; }
+.sn-auto[data-kind="credit"] > span[aria-hidden="true"] { display: none; }
+.sn-auto[data-kind="credit"] .btn { padding: 0; }
+.sn-auto-say { flex: 0 1 auto; }
+/* The title box has a real <label for="sn-auto-title"> beside it. */
+.sn-auto-label { margin-left: var(--s2); font-weight: 600; white-space: nowrap; }
+/* The "no words" / "looking" strip sits in the page's own column, right under the words band
+   (singnow.js moves it there): its place in the sound row's grid must not carry over. */
+.sn-sing > .sn-auto[data-kind="none"], .sn-sing > .sn-auto[data-kind="looking"] { grid-column: auto; grid-row: auto; }
+.sn-auto .select { flex: 0 1 300px; width: auto; min-width: 160px; }
+
+@media (max-width: 899px) {
+  /* Narrow: the key hints leave the music row so it wraps as little as it can (the keys
+     still work, and each button's tooltip still names its key). */
+  .sn-transport .keycap { display: none; }
+  .sn-primary { min-width: 140px; }
+  /* Narrow: the mix across the top, Volume beside the Words button, Octave under Volume. */
+  .sn-sound { grid-template-columns: 1fr 1fr; row-gap: var(--s3); }
+  .sn-sound > .sn-mix { grid-column: 1 / -1; grid-row: 1; }
+  .sn-sound > .field { grid-column: 1; grid-row: 2 / span 1; }
+  .sn-sound > div:not(.sn-sound-end):not(.sn-auto):not(.sn-mix) { grid-column: 1; grid-row: 3 / span 2; }
+  .sn-sound > .sn-sound-end { grid-column: 2; grid-row: 2; }
+  .sn-auto { grid-column: 2; grid-row: 3; }
+  .sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > .sn-mix { grid-row: 2; }
+  .sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > .field { grid-row: 3 / span 1; }
+  .sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > div:not(.sn-sound-end):not(.sn-auto):not(.sn-mix) { grid-row: 4 / span 1; }
+  .sn-sound:has(.sn-auto[data-kind="none"]:not([hidden]), .sn-auto[data-kind="looking"]:not([hidden])) > .sn-sound-end { grid-row: 3; }
+  .sn-review { grid-template-columns: 1fr; }
+  .sn-review > .sn-keep:not([hidden]), .sn-review > .sn-keep:not([hidden]) + .sn-review-row { grid-column: 1; }
+  .sn-review-row { grid-template-columns: 1fr; gap: var(--s3); }
+}
+
+/* ---- the sky: line stars, the end panel, the shooting star
+   (docs/design/specs/2026-10-13-sing-page-sky.md; built by Cody, looks set by eye in the
+   review docs/design/reviews/2026-10-13-sing-page-sky.md) */
+
+/* The star row: one star a line, under the track. Its 16 px are always kept, so nothing
+   moves when the first star arrives. */
+.sn-line-stars { position: absolute; left: 0; right: 0; top: 40px; height: 16px; }
+.sn-line-stars[hidden] { display: block; visibility: hidden; }
+.sn-star { position: absolute; top: 50%; line-height: 0; transform: translate(-50%, -50%); animation: sn-star-in var(--d-slow) var(--ease) both; }
+@keyframes sn-star-in { from { opacity: 0; } }
+/* Never colour alone: filled and large against hollow and small. */
+.sn-star .star-shape path, .sn-line-pop .star-shape path, .sn-end-star .star-shape path, .sn-end-best .star-shape path { fill: none; stroke: var(--gold); stroke-width: .26; stroke-linejoin: round; }
+.sn-star[data-level="with"] .star-shape path, .sn-line-pop[data-level="with"] .star-shape path, .sn-end-star[data-level="with"] .star-shape path, .sn-end-best .star-shape path { fill: var(--gold-fill); stroke-width: .18; }
+/* The star drawing keeps a wide empty margin (room for a ring in other screens), so a
+   "14 px" star shows about 8 px of star and the hollow one was a speck. Drawn larger here:
+   the numbers in SONG.lineStars (starPx 14 / 10, smallStarPx 8 / 6) stay the names of the
+   four sizes, and these are what they look like. Seen at 1440, 1024 and 700 px. */
+.sn-star svg[width="14"], .sn-end-star svg[width="14"] { width: 24px; height: 24px; }
+.sn-star svg[width="10"], .sn-end-star svg[width="10"] { width: 17px; height: 17px; }
+.sn-star svg[width="8"] { width: 12px; height: 12px; }
+.sn-star svg[width="6"] { width: 9px; height: 9px; }
+.sn-end-best svg { width: 22px; height: 22px; margin: -4px; }
+/* A filled star carries a little light on the dark sky (Dawn's pale page would only smear it). */
+:root:not([data-theme="dawn"]) .sn-star[data-level="with"] svg, :root:not([data-theme="dawn"]) .sn-line-pop[data-level="with"] svg { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--gold-fill) 75%, transparent)); }
+/* The star that lands beside the words: centred on the progress marker's line, just past its
+   right end, where the eye already is when a line finishes. */
+.sn-line-pop { position: absolute; left: 50%; top: 56px; margin: -17px 0 0 calc(min(640px, 80%) / 2 + 4px); width: 34px; height: 34px; line-height: 0; opacity: 0; pointer-events: none; }
+
+/* The line on repeat. */
+.sn-loop { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s2); justify-self: center; padding: 2px var(--s3); border-radius: 999px; background: var(--raised); }
+.sn-loop[hidden] { display: none; }
+
+/* The end panel, over the stage. It needs --end-h of stage (216 px; 264 narrow, 300 narrow
+   after practice). A shorter stage grows to that DOWNWARDS, over the words band (nothing is
+   sung then), and gives the same amount back as a negative margin: the scrub bar, the star
+   row and every control stay exactly where they were, so the shooting stars land on a row
+   that has not moved, and closing the panel moves nothing either. */
+.sn-stage.has-end { height: max(var(--end-h), var(--stage-h)); margin-bottom: min(0px, var(--stage-h) - var(--end-h)); z-index: 2; box-shadow: 0 10px 28px color-mix(in srgb, var(--bg) 70%, transparent); transition: box-shadow var(--d-slow) var(--ease), height var(--d-slow) var(--ease), margin-bottom var(--d-slow) var(--ease); }
+:root[data-calm="on"] .sn-stage.has-end { transition: none; }
+.sn-stage.has-end .sn-stage-pic { opacity: .45; }
+.sn-stage.has-end .sn-readout, .sn-stage.has-end .sn-count { visibility: hidden; }
+/* Three columns: the sentence (its buttons under it), the best line, the line to practise.
+   A thin band of the aurora's colours along the top ties the card to the sky. */
+.sn-end {
+  position: absolute; inset: 12px; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: var(--s2) var(--s5);
+  padding: var(--s4) var(--s4) var(--s3); border-radius: var(--r-m, 12px); border: 1px solid var(--line);
+  background: linear-gradient(90deg, var(--aurora-low), var(--aurora-mid), var(--aurora-high)) top / 100% 3px no-repeat, color-mix(in srgb, var(--surface) 94%, transparent);
+  overflow: auto; animation: sn-end-in var(--d-slow) var(--ease) both;
+}
+.sn-end[hidden] { display: none; }
+.sn-end[data-calm="on"] { animation: sn-end-fade 200ms linear both; }
+@keyframes sn-end-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes sn-end-fade { from { opacity: 0; } }
+.sn-end p { margin: 0; }
+.sn-end-main { grid-column: 1; grid-row: 1; }
+.sn-end-head { margin: 0; font: var(--t-h2); text-wrap: balance; outline: none; }
+.sn-end-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-s); }
+.sn-end-best { display: inline-flex; align-items: center; gap: var(--s2); margin-top: var(--s3); padding: 2px var(--s3) 2px var(--s2); border-radius: 999px; border: 1px solid var(--gold); color: var(--gold); font-weight: 600; }
+.sn-end-card { grid-row: 1 / span 2; display: grid; align-content: start; justify-items: start; gap: 2px; min-width: 0; padding-left: var(--s5); border-left: 1px solid var(--line); }
+.sn-end-card h3 { margin: 0; font: var(--t-small); font-weight: 600; color: var(--muted); }
+.sn-end-line { display: flex; align-items: center; gap: var(--s1); font: var(--t-h2); font-variant-numeric: tabular-nums; }
+.sn-end-star { display: inline-flex; margin: -5px 0 -5px -6px; }
+.sn-end-words { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-end-card .btn { margin-top: var(--s2); }
+.sn-end-actions { grid-column: 1; grid-row: 2; align-self: end; justify-content: flex-start; gap: var(--s2); margin: 0; padding: 0; }
+/* No cards (too short for line stars): the sentence has the whole panel. */
+.sn-end:not(:has(.sn-end-card)) .sn-end-main { grid-column: 1 / -1; }
+
+/* The shooting star: only ever added after the microphone is released (singnow.js). A bright
+   head with two rings of light, and a tail that is a core line inside a soft wide one. The
+   element stays 2 px tall (singnow.js places it by that); the light is laid around it. */
+.sn-streak { position: fixed; left: 0; top: 0; z-index: 50; height: 2px; border-radius: 1px; pointer-events: none; transform-origin: 100% 50%; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 55%, transparent) 55%, var(--gold-fill)); }
+.sn-streak::before { content: ""; position: absolute; inset: -4px 0 -4px 25%; border-radius: 5px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold-fill) 50%, transparent)); filter: blur(3px); }
+.sn-streak i { position: absolute; right: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--voice-core); box-shadow: 0 0 6px 2px var(--gold-fill), 0 0 22px 7px color-mix(in srgb, var(--gold-fill) 55%, transparent); }
+/* Dawn: light cannot glow on a pale page, so the star is ink: a darker tail and a ringed head. */
+[data-theme="dawn"] .sn-streak { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 70%, transparent) 55%, var(--gold)); }
+[data-theme="dawn"] .sn-streak::before { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold-fill) 70%, transparent)); }
+[data-theme="dawn"] .sn-streak i { background: var(--gold-fill); box-shadow: 0 0 0 1.5px var(--gold), 0 0 14px 4px color-mix(in srgb, var(--gold-fill) 60%, transparent); }
+/* Calm motion: a star appears in place with a short fade; nothing lands, flies or swells (singnow.js). */
+[data-calm="on"] .sn-star { animation-duration: 200ms; animation-timing-function: linear; }
+
+@media (max-width: 899px) {
+  /* The end panel in two rows: the sentence (Close at its right), then the two line cards
+     without the quoted words. After practice its three buttons take a row of their own. */
+  .sn-stage { --end-h: 264px; }
+  .sn-stage:has(#sn-end-again) { --end-h: 300px; }
+  .sn-end { grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr auto; column-gap: var(--s4); }
+  .sn-end-main { grid-column: 1 / -1; padding-right: 76px; }
+  .sn-end-card { grid-row: 2; }
+  .sn-end-main + .sn-end-card { border-left: 0; padding-left: 0; }
+  .sn-end-actions { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; }
+  .sn-end:has(#sn-end-again) .sn-end-main { padding-right: 0; }
+  .sn-end:has(#sn-end-again) .sn-end-actions { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+  .sn-end-words:not(.is-say) { display: none; }
+}

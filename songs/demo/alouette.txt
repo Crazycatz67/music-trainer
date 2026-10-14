@@ -1,0 +1,89 @@
+#TITLE:Alouette
+#ARTIST:Traditional
+#LANGUAGE:French
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:French-Canadian traditional, first printed 1879
+#LYRICIST:French-Canadian traditional, first printed 1879
+#PUBLICDOMAIN:First printed in 1879 in a McGill College song book: published before 1931.
+#SOURCE:Wikipedia contributors, "Alouette (song)" (en.wikipedia.org, revision 1365593225), https://en.wikipedia.org/w/index.php?title=Alouette_(song)&oldid=1365593225&action=raw
+#SOURCESHA256:caf56160896a8988d3735dec3b9838a56edd23ac268434c5a9a378538eb846b5
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:216
+#GAP:2000
+: 0 11 7 A
+: 12 3 9 lou
+: 16 7 11 et
+: 24 7 11 te,
+: 32 3 9  gen
+: 36 3 7 tille
+: 40 3 9  a
+: 44 3 11 lou
+: 48 7 7 et
+: 56 7 2 te,
+- 63
+: 64 11 7 a
+: 76 3 9 lou
+: 80 7 11 et
+: 88 7 11 te,
+: 96 3 9  je
+: 100 3 7  te
+: 104 3 9  plu
+: 108 3 11 me
+: 112 15 7 rai.
+- 127
+: 128 3 7 Je
+: 132 3 7  te
+: 136 3 7  plu
+: 140 3 7 me
+: 144 3 7 rai
+: 148 3 11  la
+: 152 7 14  tête,
+- 159
+: 160 3 14 je
+: 164 3 16  te
+: 168 3 14  plu
+: 172 3 12 me
+: 176 3 11 rai
+: 180 3 9  la
+: 184 7 7  tête,
+- 191
+: 192 3 14 et
+: 196 3 14  la
+: 200 7 14  tête,
+: 208 3 2  et
+: 212 3 2  la
+: 216 7 2  tête!
+- 223
+: 224 3 14 A
+: 228 3 14 lou
+: 232 7 14 ette,
+: 240 3 2  a
+: 244 3 2 lou
+: 248 7 2 ette.
+- 255
+: 256 7 14 Ah.
+: 264 7 12 ~
+: 272 7 11 ~
+: 280 7 9 ~
+- 287
+: 288 11 7 A
+: 300 3 9 lou
+: 304 7 11 et
+: 312 7 11 te,
+: 320 3 9  gen
+: 324 3 7 tille
+: 328 3 9  a
+: 332 3 11 lou
+: 336 7 7 et
+: 344 7 2 te,
+- 351
+: 352 11 7 a
+: 364 3 9 lou
+: 368 7 11 et
+: 376 7 11 te,
+: 384 3 9  je
+: 388 3 7  te
+: 392 3 9  plu
+: 396 3 11 me
+: 400 15 7 rai.
+E

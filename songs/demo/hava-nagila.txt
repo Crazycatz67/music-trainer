@@ -1,0 +1,164 @@
+#TITLE:Hava Nagila
+#ARTIST:Traditional
+#LANGUAGE:Hebrew
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Hasidic melody, set down by Abraham Zvi Idelsohn (died 1938) in 1915
+#LYRICIST:Abraham Zvi Idelsohn (died 1938), 1918
+#PUBLICDOMAIN:First published in 1922 in a Hebrew song collection: published before 1931.
+#SOURCE:Wikipedia contributors, "Hava Nagila" (en.wikipedia.org, revision 1377482510), https://en.wikipedia.org/w/index.php?title=Hava_Nagila&oldid=1377482510&action=raw
+#SOURCESHA256:76fddcd81106edd715fa508b60bf85953ecd57e733cbeb132f41b01d4b77d940
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:224
+#GAP:2000
+: 0 7 2 Ha
+: 8 11 2 va
+: 20 3 6  na
+: 24 3 3 gi
+: 28 3 2 la,
+: 32 7 6  ha
+: 40 11 6 va
+: 52 3 9  na
+: 56 3 7 gi
+: 60 3 6 la.
+- 63
+: 64 7 7 Ha
+: 72 11 7 va
+: 84 3 10  na
+: 88 3 9 gi
+: 92 3 7 la
+: 96 7 6  ve
+: 104 2 3 e
+: 106 2 2 nis
+: 108 3 3 me
+: 112 15 2 ḥa.
+- 127
+: 128 7 2 Ha
+: 136 11 2 va
+: 148 3 6  na
+: 152 3 3 gi
+: 156 3 2 la,
+: 160 7 6  ha
+: 168 11 6 va
+: 180 3 9  na
+: 184 3 7 gi
+: 188 3 6 la.
+- 191
+: 192 7 7 Ha
+: 200 11 7 va
+: 212 3 10  na
+: 216 3 9 gi
+: 220 3 7 la
+: 224 7 6  ve
+: 232 2 3 e
+: 234 2 2 nis
+: 236 3 3 me
+: 240 15 2 ḥa.
+- 255
+: 256 3 6 Ha
+: 260 7 6 va
+: 268 3 3  ne
+: 272 3 2 ra
+: 276 3 2 ne
+: 280 7 2 nah,
+: 288 3 3  ha
+: 292 7 3 va
+: 300 3 2  ne
+: 304 3 0 ra
+: 308 3 0 ne
+: 312 7 0 nah.
+- 319
+: 320 7 0 Ha
+: 328 5 3 va
+: 334 2 2  ne
+: 336 3 0 ra
+: 340 3 0 ne
+: 344 7 7 nah
+: 352 7 6  ve
+: 360 2 3 e
+: 362 2 2 nis
+: 364 3 3 me
+: 368 15 2 ḥa.
+- 383
+: 384 3 6 Ha
+: 388 7 6 va
+: 396 3 3  ne
+: 400 3 2 ra
+: 404 3 2 ne
+: 408 7 2 nah,
+: 416 3 3  ha
+: 420 7 3 va
+: 428 3 2  ne
+: 432 3 0 ra
+: 436 3 0 ne
+: 440 7 0 nah.
+- 447
+: 448 7 0 Ha
+: 456 5 3 va
+: 462 2 2  ne
+: 464 3 0 ra
+: 468 3 0 ne
+: 472 7 7 nah
+: 480 7 6  ve
+: 488 2 3 e
+: 490 2 2 nis
+: 492 3 3 me
+: 496 15 2 ḥa.
+- 511
+: 512 15 7 U
+: 528 15 7 ru,
+: 544 7 7  u
+: 552 7 7 ru
+: 560 7 7  a
+: 568 7 7 ḥim!
+- 575
+: 576 3 7 U
+: 580 3 7 ru
+: 584 5 10  a
+: 590 2 9 ḥim
+: 592 3 7  be'lev
+: 596 3 10  sa
+: 600 3 9 me
+: 604 3 7 aḥ.
+- 607
+: 608 3 7 U
+: 612 3 7 ru
+: 616 5 10  a
+: 622 2 9 ḥim
+: 624 3 7  be'lev
+: 628 3 10  sa
+: 632 3 9 me
+: 636 3 7 aḥ.
+- 639
+: 640 3 9 U
+: 644 3 9 ru
+: 648 5 12  a
+: 654 2 10 ḥim
+: 656 3 9  be-lev
+: 660 3 12  sa
+: 664 3 10 me
+: 668 3 9 aḥ.
+- 671
+: 672 3 9 U
+: 676 3 9 ru
+: 680 5 12  a
+: 686 2 10 ḥim
+: 688 3 9  be-lev
+: 692 3 12  sa
+: 696 3 10 me
+: 700 3 9 aḥ.
+- 703
+: 704 3 9 Uru
+: 708 3 9  a
+: 712 7 14 ḥim,
+: 720 3 2  uru
+: 724 3 2  a
+: 728 7 14 ḥim
+: 740 3 2  b'
+: 744 3 2 lev
+: 748 3 2  sa
+: 752 3 10 me
+: 756 3 9 ~
+: 760 3 7 ~
+: 764 3 6 ~
+: 768 23 7 aḥ.
+E

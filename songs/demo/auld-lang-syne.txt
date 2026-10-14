@@ -1,0 +1,76 @@
+#TITLE:Auld Lang Syne
+#ARTIST:Traditional
+#LANGUAGE:Scots
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Scottish traditional tune
+#LYRICIST:Robert Burns (died 1796), 1788, after an older song
+#PUBLICDOMAIN:Written in 1788 and published in 1796 in the "Scots Musical Museum": published before 1931.
+#SOURCE:Wikipedia contributors, "Auld Lang Syne" (en.wikipedia.org, revision 1378217057), https://en.wikipedia.org/w/index.php?title=Auld_Lang_Syne&oldid=1378217057&action=raw
+#SOURCESHA256:e5346154741d7a6d92e9c9b6cc91d6012e3467b6bf01db7be6e738f8bc69c3bb
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:192
+#GAP:2000
+: 0 7 0 Should
+: 8 11 5  auld
+: 20 3 5  ac
+: 24 7 5 quain
+: 32 7 9 tance
+: 40 11 7  be
+: 52 3 5  for
+: 56 7 7 got,
+- 63
+: 64 7 9 and
+: 72 11 5  ne
+: 84 3 5 ver
+: 88 7 9  brought
+: 96 7 12  to
+: 104 23 14  mind?
+- 127
+: 128 7 14 Should
+: 136 11 12  auld
+: 148 3 9  ac
+: 152 7 9 quain
+: 160 7 5 tance
+: 168 11 7  be
+: 180 3 5  for
+: 184 7 7 got,
+- 191
+: 192 7 9 and
+: 200 11 5  auld
+: 212 3 2 ~
+: 216 7 2  lang
+: 224 7 0 ~
+: 232 23 5  syne?
+- 255
+: 256 7 14 For
+: 264 11 12  auld
+: 276 3 9 ~
+: 280 7 9  lang
+: 288 7 5 ~
+: 296 11 7  syne,
+: 308 3 5  my
+: 312 7 7  jo,
+- 319
+: 320 7 14 for
+: 328 11 12  auld
+: 340 3 9 ~
+: 344 7 9  lang
+: 352 7 12 ~
+: 360 23 14  syne,
+- 383
+: 384 7 14 we'll
+: 392 11 12  tak'
+: 404 3 9  a
+: 408 7 9  cup
+: 416 7 5  o'
+: 424 11 7  kind
+: 436 3 5 ness
+: 440 7 7  yet,
+- 447
+: 448 7 9 for
+: 456 11 5  auld
+: 468 3 2 ~
+: 472 7 2  lang
+: 480 7 0 ~
+: 488 23 5  syne.
+E

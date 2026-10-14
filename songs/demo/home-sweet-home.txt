@@ -1,0 +1,90 @@
+#TITLE:Home, Sweet Home
+#ARTIST:Henry Bishop
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Henry Bishop (died 1855), from the opera "Clari", 1823
+#LYRICIST:John Howard Payne (died 1852), 1823
+#PUBLICDOMAIN:Published in 1823: published before 1931.
+#SOURCE:OpenScore Lieder Corpus, https://raw.githubusercontent.com/OpenScore/Lieder/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Bishop%2C_Henry/_/Home%2C_Sweet_Home/lc6486038.mxl
+#SOURCESHA256:6553766472bfc67aca1fde73b26b9db2505d191ff75d670f882d8630ade3305b
+#LICENSE:CC0 1.0 Universal (the source score; retrieved 2026-10-12)
+#BPM:144
+#GAP:2000
+: 0 3 4 ’Mid
+: 4 5 8  pleas
+: 10 1 9 ~
+: 12 5 9 ures
+: 18 1 11  and
+: 20 5 11  Pa
+: 26 1 8 la
+: 28 7 8 ces
+: 36 5 9  though
+: 42 2 8 ~
+: 44 3 9  we
+: 48 3 6  may
+: 52 11 8  roam,
+- 63
+: 64 1 4 Be
+: 66 2 4  it
+: 68 5 8  e
+: 74 1 9 ~
+: 76 5 9 ver
+: 82 1 11  so
+: 84 7 11  hum
+: 92 3 8 ble
+: 96 3 11  there’s
+: 100 5 9  no
+: 106 2 8 ~
+: 108 3 9  place
+: 112 3 6  like
+: 116 11 4  home!
+- 127
+: 128 3 11 A
+: 132 5 16  charm
+: 138 2 15 ~
+: 140 5 13  from
+: 146 1 11  the
+: 148 7 11  skies
+: 156 3 8  seems
+: 160 3 11  to
+: 164 5 9  hal
+: 170 2 8 ~
+: 172 3 9 low
+: 176 3 6  us
+: 180 11 8  there
+- 191
+: 192 3 11 Which
+: 196 5 16  seek
+: 202 2 15 ~
+: 204 5 13  through
+: 210 1 11  the
+: 212 7 11  world,
+: 220 3 8  is
+: 224 3 11  ne’er
+: 228 3 11  met
+: 232 7 9  with
+: 240 3 6  else
+: 244 15 4 where
+- 259
+: 260 15 11 Home!
+: 276 7 9  Home
+: 284 7 6 ~
+: 292 7 4  sweet
+: 300 7 6  sweet
+: 308 11 8  Home!
+- 319
+: 320 3 11 There’s
+: 324 5 16  no
+: 330 2 15 ~
+: 332 5 13  place
+: 338 1 11  like
+: 340 7 11  Home!
+: 348 3 8 ~
+- 351
+: 352 3 11 There’s
+: 356 3 11  no
+: 360 3 13 ~
+: 364 3 9  place
+: 368 3 6  like
+: 372 11 4  Home!
+E

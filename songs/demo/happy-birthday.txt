@@ -1,0 +1,41 @@
+#TITLE:Happy Birthday to You
+#ARTIST:Patty and Mildred J. Hill
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Patty Hill (died 1946) and Mildred J. Hill (died 1916), "Good Morning to All", 1893
+#LYRICIST:Unknown; the birthday words to that tune, in print by 1911
+#PUBLICDOMAIN:Tune published in 1893 and the birthday words by 1911: published before 1931.
+#SOURCE:Wikipedia contributors, "Happy Birthday to You" (en.wikipedia.org, revision 1369481119), https://en.wikipedia.org/w/index.php?title=Happy_Birthday_to_You&oldid=1369481119&action=raw
+#SOURCESHA256:ef7960fbf90a0fa074586d3f135d666667dfd705e2943bdac2d60a8ab1a0daa0
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:152
+#GAP:2000
+: 0 5 2 Hap
+: 6 2 2 py
+: 8 7 4  birth
+: 16 7 2 day
+: 24 7 7  to
+: 32 15 6  you,
+- 47
+: 48 5 2 Hap
+: 54 2 2 py
+: 56 7 4  birth
+: 64 7 2 day
+: 72 7 9  to
+: 80 15 7  you,
+- 95
+: 96 5 2 Hap
+: 102 2 2 py
+: 104 7 14  birth
+: 112 7 11 day
+: 120 7 7  dear
+: 128 7 6  [NAME],
+: 136 7 4 ~
+- 143
+: 144 5 12 Hap
+: 150 2 12 py
+: 152 7 11  birth
+: 160 7 7 day
+: 168 7 9  to
+: 176 15 7  you.
+E

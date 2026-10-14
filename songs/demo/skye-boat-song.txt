@@ -1,0 +1,76 @@
+#TITLE:The Skye Boat Song
+#ARTIST:Traditional, words by Harold Boulton
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Scottish traditional air, first published 1884
+#LYRICIST:Harold Boulton (died 1935), 1884
+#PUBLICDOMAIN:First published in 1884: published before 1931.
+#SOURCE:Wikipedia contributors, "The Skye Boat Song" (en.wikipedia.org, revision 1373646816), https://en.wikipedia.org/w/index.php?title=The_Skye_Boat_Song&oldid=1373646816&action=raw
+#SOURCESHA256:dce15e850ef9b022d5dadb33accc6e1c18bd3164b37766676a1b84f76f031b15
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:160
+#GAP:2000
+: 0 5 2 Speed
+: 6 2 4  bon
+: 8 3 2 nie
+: 12 7 7  boat,
+: 20 1 7  like
+: 22 2 7  a
+: 24 5 9  bird
+: 30 2 11  on
+: 32 3 9  the
+: 36 11 14  wing,
+: 48 5 11  on
+: 54 2 9 ward,
+: 56 3 11  the
+: 60 7 4  sai
+: 68 3 4 lors
+: 72 11 2  cry
+- 83
+: 96 5 2 Car
+: 102 2 4 ry
+: 104 3 2  the
+: 108 7 7  lad
+: 116 3 7  that's
+: 120 5 9  born
+: 126 2 11  to
+: 128 3 9  be
+: 132 11 14  king
+: 144 5 11  o
+: 150 2 9 ver
+: 152 3 11  the
+: 156 7 4  sea
+: 164 3 4  to
+: 168 23 7  Skye.
+- 191
+: 192 3 11 Loud
+: 196 3 7  the
+: 200 3 11  winds
+: 204 11 11  howl,
+: 216 3 9  loud
+: 220 3 4  the
+: 224 3 9  waves
+: 228 11 9  roar,
+: 240 3 7  thun
+: 244 3 4 der
+: 248 3 7 claps
+: 252 7 7  rend
+: 260 3 7  the
+: 264 23 4  air;
+- 287
+: 288 3 11 baf
+: 292 3 7 fled,
+: 296 3 11  our
+: 300 11 11  foes
+: 312 3 9  stand
+: 316 3 4  by
+: 320 3 9  the
+: 324 11 9  shore,
+: 336 3 7  fol
+: 340 3 4 low
+: 344 3 7  they
+: 348 7 7  will
+: 356 3 7  not
+: 360 11 4  dare.
+: 372 11 2 ~
+E

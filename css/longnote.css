@@ -1,0 +1,51 @@
+/* longnote.css — Long note (js/app/exercises/longnote.js). Colours and sizes come from
+   tokens.css, like everywhere else. --good / --close / --off are not used here: they are
+   pitch verdicts, and this screen has no target to be in or out of tune with. (The ring
+   itself is the shared hold ring of holdring.js and app.css, drawn as it is in Match and hold.) */
+
+.long-note .ln-safety { color: var(--text); }
+/* Beside the title, where the star tray sits in other exercises. */
+.long-note .ln-best { margin-left: auto; min-height: 1.25rem; font-variant-numeric: tabular-nums; text-align: right; }
+/* The reason beside the main button: its width is kept, so the rest count ticking down
+   never moves the button. */
+.long-note .ln-why { min-width: 22em; font-variant-numeric: tabular-nums; }
+
+/* The stage gives up some height to the result's reserved place under it (as the voice
+   check's stage does for its own words), so the buttons stay on a 1440 x 900 screen. */
+.long-note .stage { height: clamp(260px, calc(100vh - 480px), 480px); }
+.ln-slot { min-height: 7.75rem; }
+
+/* The result of the last hold, under the stage, never over the line it describes. A wide
+   area, so it fades both ways (200 ms) and never jumps; hidden, it is out of the reading
+   order too. */
+.ln-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s1) var(--s5); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
+.ln-card[data-shown="no"] { opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
+.ln-card[data-tier="best"] { border-color: var(--gold); box-shadow: 0 0 var(--s5) var(--gold-glow); }
+.ln-main { grid-column: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); }
+.ln-seconds { font: var(--t-hero); font-variant-numeric: tabular-nums; color: var(--text); }
+.ln-steady { display: inline-flex; align-items: center; gap: var(--s2); font: var(--t-body); font-weight: 600; color: var(--text); }
+.ln-steady .icon { flex: none; color: var(--muted); }
+.ln-main .chip { align-self: center; }
+.ln-tip { grid-column: 1; }
+
+/* The last days: one bar a day, its height the longest note of that day against the longest
+   of the row. A day not sung is a short line on the floor, so the two differ by shape. */
+.ln-days-wrap { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: var(--s1); justify-items: end; }
+.ln-days { display: flex; align-items: flex-end; gap: var(--s2); }
+.ln-day { display: grid; justify-items: center; gap: var(--s1); font: var(--t-tiny); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ln-day[data-today] { color: var(--text); font-weight: 700; }
+.ln-bar { display: block; width: var(--s3); height: calc(var(--k, 0) * var(--s7)); min-height: 2px; border-radius: var(--s1) var(--s1) 0 0; background: var(--line-strong); }
+.ln-bar[data-sung] { background: var(--gold-fill); border: 1px solid var(--gold); border-bottom: 0; }
+.ln-day { grid-template-rows: var(--s7) auto; align-items: end; }
+
+@media (max-width: 899px), (max-height: 719px) {
+  /* A short or narrow stage: the days row goes, the numbers stay. */
+  .ln-days-wrap { display: none; }
+  .ln-slot { min-height: 5.5rem; }
+  .ln-seconds { font: var(--t-h1); }
+  .long-note .ln-why { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-card, .ln-card[data-shown="no"] { transition-duration: var(--d-base), 0s; }
+}
+:root[data-calm="on"] .ln-card { box-shadow: var(--shadow-card); }

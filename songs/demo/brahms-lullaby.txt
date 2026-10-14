@@ -1,0 +1,71 @@
+#TITLE:Wiegenlied (Brahms's Lullaby)
+#ARTIST:Johannes Brahms
+#LANGUAGE:German
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Johannes Brahms (died 1897), Wiegenlied, Op. 49 No. 4, 1868
+#LYRICIST:German traditional, from "Des Knaben Wunderhorn", 1808
+#PUBLICDOMAIN:Words printed in 1808 and song in 1868: published before 1931.
+#SOURCE:OpenScore Lieder Corpus, https://raw.githubusercontent.com/OpenScore/Lieder/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Brahms%2C_Johannes/5_Lieder%2C_Op.49/4_Wiegenlied/lc5701612.mxl
+#SOURCESHA256:5867b883ba1d159f234a3764a0f3f467afdd78cf6ee4698bca17d52d3a4f65db
+#LICENSE:CC0 1.0 Universal (the source score; retrieved 2026-10-12)
+#BPM:144
+#GAP:2000
+: 0 3 7 Gu
+: 4 3 7 ten
+: 8 11 10  A
+: 20 3 7 bend,
+: 24 7 7  gut
+: 32 7 10  Nacht,
+- 39
+: 48 3 7 mit
+: 52 3 10 ~
+: 56 7 15  Ro
+: 64 11 14 sen
+: 76 3 12  be
+: 80 7 12 dacht,
+: 88 7 10 ~
+- 95
+: 96 3 5 mit
+: 100 3 7 ~
+: 104 7 8  Näg
+: 112 7 5 lein
+: 120 3 5  be
+: 124 3 7 ~
+: 128 7 8 steckt
+- 135
+: 144 3 5 schlupf
+: 148 3 8 ~
+: 152 3 14  un
+: 156 3 12 ~
+: 160 7 10 ter
+: 168 7 14  die
+: 176 7 15  Deck:
+- 183
+: 192 3 3 mor
+: 196 3 3 gen
+: 200 15 15  früh,
+: 216 3 12  wenn
+: 220 3 8  Gott
+: 224 15 10  will,
+- 239
+: 240 3 7 wirst
+: 244 3 3  du
+: 248 7 8  wie
+: 256 7 10 der
+: 264 7 12  ge
+: 272 15 10 weckt,
+- 287
+: 288 3 3 mor
+: 292 3 3 gen
+: 296 15 15  früh,
+: 312 3 12  wenn
+: 316 3 8  Gott
+: 320 15 10  will,
+- 335
+: 336 3 7 wirst
+: 340 3 3  du
+: 344 7 8  wie
+: 352 7 7 der
+: 360 7 5  ge
+: 368 15 3 weckt.
+E

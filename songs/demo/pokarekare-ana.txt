@@ -1,0 +1,66 @@
+#TITLE:Pōkarekare Ana
+#ARTIST:Traditional, arranged by Paraire Tomoana
+#LANGUAGE:Māori
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:New Zealand, a love song from about 1914, arranged by Paraire Tomoana (died 1946) in 1917
+#LYRICIST:New Zealand, a love song from about 1914; these words by Paraire Tomoana (died 1946), 1917
+#PUBLICDOMAIN:Sheet music with these words published in Auckland in 1926: published before 1931.
+#SOURCE:Wikipedia contributors, "Pōkarekare Ana" (en.wikipedia.org, revision 1364390961), https://en.wikipedia.org/w/index.php?title=P%C5%8Dkarekare_Ana&oldid=1364390961&action=raw
+#SOURCESHA256:6f08e37d024f4e6524c963842855f6260daf47c11eaed825a04005b256d14d5e
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:176
+#GAP:2000
+: 0 7 0 Pō
+: 8 3 9 ka
+: 12 3 9 re
+: 16 3 7 ka
+: 20 3 7 re
+: 24 15 5  a
+: 40 7 9 na,
+- 47
+: 48 7 0 ngā
+: 56 3 5  wai
+: 60 3 5  o
+: 64 7 4  Wai
+: 72 15 2 a
+: 88 7 7 pu,
+- 95
+: 96 3 2 Whi
+: 100 3 2 ti
+: 104 3 7  a
+: 108 3 7 tu
+: 112 3 5  ko
+: 116 3 5 e
+: 120 15 4  hi
+: 136 7 7 ne,
+- 143
+: 144 7 0 ma
+: 152 3 2 ri
+: 156 3 2 no
+: 160 3 4  a
+: 164 3 4 na
+: 168 23 5  e.
+- 191
+: 200 7 5 E
+: 208 7 7  hi
+: 216 7 9 ne
+: 224 23 10  e,
+- 247
+: 248 7 2 ho
+: 256 7 5 ki
+: 264 7 10  mai
+: 272 23 9  ra.
+- 295
+: 296 7 5 Ka
+: 304 7 7  ma
+: 312 7 9 te
+: 320 11 7  a
+: 332 3 14 hau
+- 335
+: 336 3 10 I
+: 340 3 10  te
+: 344 7 4  a
+: 352 7 2 ro
+: 360 7 0 ha
+: 368 23 5  e.
+E

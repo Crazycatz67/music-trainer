@@ -1,0 +1,38 @@
+#TITLE:Ode to Joy
+#ARTIST:Ludwig van Beethoven
+#LANGUAGE:German
+#CREATOR:music-trainer demo (melody: Beethoven, Symphony No. 9, 1824; words: Friedrich Schiller, 1785; public domain)
+#BPM:120
+#GAP:2000
+: 0 3 4 Freu
+: 4 3 4 de,
+: 8 3 5  schö
+: 12 3 7 ner
+: 16 3 7  Göt
+: 20 3 5 ter
+: 24 3 4 fun
+: 28 3 2 ken,
+: 32 3 0  Toch
+: 36 3 0 ter
+: 40 3 2  aus
+: 44 3 4  E
+: 48 5 4 ly
+: 54 2 2 si
+: 56 7 2 um,
+- 62
+: 64 3 4 Wir
+: 68 3 4  be
+: 72 3 5 tre
+: 76 3 7 ten
+: 80 3 7  feu
+: 84 3 5 er
+: 88 3 4 trun
+: 92 3 2 ken,
+: 96 3 0  Himm
+: 100 3 0 li
+: 104 3 2 sche,
+: 108 3 4  dein
+: 112 5 2  Hei
+: 118 2 0 lig
+: 120 7 0 tum!
+E

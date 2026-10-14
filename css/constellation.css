@@ -1,0 +1,65 @@
+/* constellation.css — Sing a constellation (js/app/exercises/constellation.js):
+   the picker's cards, the figure screen's title row, status line and done row.
+   Its own file so css/app.css is not touched. Colours and sizes are tokens only
+   (docs/design/STYLE.md); the field itself is a canvas (js/app/figurefield.js) inside the
+   pitch stage's own box (.stage in app.css). */
+
+/* ---- the picker: a sky of figures, 3 across, 2 under 1100 px, 1 under 700 px (spec
+   section 8; review 3, finding 5). Each card is a piece of sky with its words beneath. */
+.figure-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--s4); margin: var(--s4) 0 0; padding: 0; list-style: none; }
+.figure-card { position: relative; height: 100%; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; padding: 0; overflow: hidden; color: inherit; }
+.figure-card > * + * { margin-top: 0; }
+.figure-card-text { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1); min-width: 0; padding: var(--s3) var(--s4) var(--s4); }
+.figure-card-text h2 { font: var(--t-body); font-weight: 600; }
+.figure-card-text p { font: var(--t-small); }
+/* "Reaches 5 notes past your range" sits beside the name, clear of the drawing, so every
+   card is the same height. */
+.figure-card-text .chip { position: absolute; top: calc(120px + var(--s3)); right: var(--s3); margin: 0; max-width: calc(100% - 9rem); white-space: normal; }
+.figure-card[data-state="complete"] h2 { color: var(--gold); }
+
+.figure-thumb { display: block; flex: none; width: 100%; height: 120px; background: linear-gradient(var(--stage-top), var(--stage)); border-bottom: 1px solid var(--line); }
+.figure-thumb line { stroke-width: 1.5; stroke-linecap: round; }
+.figure-thumb .is-sky { fill: var(--text); fill-opacity: .3; }
+[data-theme="dawn"] .figure-thumb .is-sky { fill: var(--muted); fill-opacity: .34; }
+.figure-thumb .is-guide { stroke: var(--line-strong); stroke-dasharray: 1 5; opacity: .6; }
+.figure-thumb .is-drawn { stroke: var(--gold); stroke-width: 2; }
+.figure-thumb .is-closing { stroke: var(--gold); opacity: .7; }
+.figure-thumb .halo-in { stop-color: var(--gold-fill); stop-opacity: .45; }
+.figure-thumb .halo-out { stop-color: var(--gold-fill); stop-opacity: 0; }
+/* Lit or not is a filled shape against an outline, never the colour alone. */
+.figure-thumb .is-hollow { fill: none; stroke: var(--line-strong); stroke-width: 1.5; stroke-linejoin: round; transition: stroke var(--d-base) var(--ease); }
+.figure-thumb .is-lit { fill: var(--gold-fill); stroke: var(--gold); stroke-width: 1; stroke-linejoin: round; }
+/* Pointed at or focused: the stars to be sung wake up (a colour ease, nothing moves). */
+.figure-card:hover .is-hollow, .figure-card:focus-visible .is-hollow { stroke: var(--text); }
+.figure-card:hover .is-guide, .figure-card:focus-visible .is-guide { opacity: 1; }
+
+/* ---- the figure screen */
+.constellation .figure-name { font: var(--t-h2); transition: color var(--d-reveal) var(--ease); }
+/* All lit: the name sets in gold (and the chip and the status line say so in words). */
+.constellation .figure-name[data-complete] { color: var(--gold); }
+.figure-field canvas { transition: opacity var(--d-slow) var(--ease); }
+.figure-status { min-height: 1.5rem; font: var(--t-body); font-variant-numeric: tabular-nums; }
+.constellation[data-phase="done"] .figure-status { display: none; }   /* the done row says it */
+
+.figure-done { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3) var(--s5); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); animation: fade-in var(--d-base) var(--ease) both; }
+.figure-done[hidden] { display: none; }
+.figure-done-words { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); min-width: 0; }
+.figure-done-words .done-line { font: var(--t-h2); }
+.figure-done-words .reason { flex-basis: 100%; }
+.figure-done-words .reason:empty { display: none; }
+.figure-done-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+/* A whole figure: the field itself carries the name and the sentence, so the row under it
+   is only its buttons, centred under the sky, and no longer a card. */
+.figure-done[data-complete] { justify-content: center; padding: var(--s1) 0; background: none; border-color: transparent; box-shadow: none; }
+.figure-done[data-complete] .figure-done-words:not(:has(.chip, .reason:not(:empty))) { display: none; }
+
+/* A short window (1024 x 640): the page was 2 px taller than the window (review 3, finding 11). */
+@media (max-height: 660px) {
+  .constellation.exercise > .action-row { margin-top: var(--s2); }
+}
+@media (max-width: 1099px) {
+  .figure-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 699px) {
+  .figure-grid { grid-template-columns: 1fr; }
+}

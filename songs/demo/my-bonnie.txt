@@ -1,0 +1,78 @@
+#TITLE:My Bonnie Lies over the Ocean
+#ARTIST:Traditional
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Scottish traditional; in print by 1881
+#LYRICIST:Scottish traditional; in print by 1881
+#PUBLICDOMAIN:Tune and words printed in "Students' Songs" in 1881: published before 1931.
+#SOURCE:Wikipedia contributors, "My Bonnie Lies over the Ocean" (en.wikipedia.org, revision 1371358716), https://en.wikipedia.org/w/index.php?title=My_Bonnie_Lies_over_the_Ocean&oldid=1371358716&action=raw
+#SOURCESHA256:abd4965d01921c0dbc5e99abe647232032b5ec45a552e06f3ceebbadbdd28b22
+#LICENSE:CC BY-SA 4.0 (the source score; retrieved 2026-10-13); this chart is adapted from that score and is shared under the same licence
+#BPM:264
+#GAP:2000
+: 0 7 2 My
+: 8 7 11  Bon
+: 16 7 9 nie
+: 24 7 7  lies
+: 32 7 9  o
+: 40 7 7 ver
+: 48 7 4  the
+: 56 7 2  o
+: 64 31 -1 cean.
+- 95
+: 96 7 2 My
+: 104 7 11  Bon
+: 112 7 9 nie
+: 120 7 7  lies
+: 128 7 7  o
+: 136 7 6 ver
+: 144 7 7  the
+: 152 39 9  sea.
+- 191
+: 192 7 2 My
+: 200 7 11  Bon
+: 208 7 9 nie
+: 216 7 7  lies
+: 224 7 9  o
+: 232 7 7 ver
+: 240 7 4  the
+: 248 7 2  o
+: 256 31 -1 cean.
+- 287
+: 288 7 2 Oh,
+: 296 7 4  bring
+: 304 7 9  back
+: 312 7 7  my
+: 320 7 6  Bon
+: 328 7 4 nie
+: 336 7 6  to
+: 344 39 7  me.
+- 383
+: 392 23 2 Bring
+: 416 23 7  back,
+: 440 23 4  bring
+: 464 23 9  back,
+- 487
+: 488 7 6 bring
+: 496 7 6  back
+: 504 7 6  my
+: 512 7 6  Bon
+: 520 7 4 nie
+: 528 7 6  to
+: 536 15 7  me,
+: 552 7 9  to
+: 560 23 11  me.
+- 583
+: 584 23 2 Bring
+: 608 23 7  back,
+: 632 23 4  bring
+: 656 23 9  back,
+- 679
+: 680 7 6 bring
+: 688 7 6  back
+: 696 7 6  my
+: 704 7 6  Bon
+: 712 7 4 nie
+: 720 7 6  to
+: 728 47 7  me.
+E

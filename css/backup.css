@@ -1,0 +1,25 @@
+/* backup.css — "Backup and restore" (js/app/backuppanel.js). Tokens only (css/tokens.css,
+   docs/design/STYLE.md): no colour of its own. The buttons, switches, sheet and banner are
+   the app's own (css/app.css). */
+
+.backup > * + * { margin-top: var(--s3); }
+.backup-what > * + * { margin-top: var(--s3); }
+/* "Always" sits where a switch would, so the three rows line up; it is a word, not a control. */
+.backup-always { min-width: 52px; text-align: right; font: var(--t-small); font-weight: 600; color: var(--muted); }
+.backup-sum { font: var(--t-small); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+/* The browser's file box is pressed through the button beside it; it stays in the page so
+   the press still opens it, but takes no room and no focus stop. */
+.backup-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.backup-status > * + * { margin-top: var(--s2); }
+.backup-status > p { font: var(--t-small); color: var(--text); }
+.backup-status .banner { margin-bottom: 0; }
+.backup[data-busy="yes"] .backup-what { opacity: .6; transition: opacity var(--d-base) var(--ease); }
+
+/* The plan: two choices one above the other, each a short list of what it would do. */
+.sheet-backup .backup-choice { padding-top: var(--s3); border-top: 1px solid var(--line); }
+.sheet-backup .backup-choice > * + * { margin-top: var(--s2); }
+.sheet-backup .backup-choice h3 { font: var(--t-body); font-weight: 600; color: var(--text); }
+.backup-lines { margin: 0; padding-left: var(--s5); font: var(--t-small); color: var(--text); }
+.backup-lines > li + li { margin-top: var(--s1); }
+
+@media (prefers-reduced-motion: reduce) { .backup[data-busy="yes"] .backup-what { transition: none; } }

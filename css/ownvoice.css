@@ -1,0 +1,23 @@
+/* ownvoice.css — "Note sound: Plain / My voice" and the "Teach it your voice" step
+   (js/app/ownvoice.js), shown under Match and hold's buttons until the round starts.
+   Colours, sizes and timings come from tokens.css by name; no raw colour value here. */
+
+.ov-slot { margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.ownvoice { display: grid; grid-template-columns: minmax(0, 320px) auto minmax(0, 1fr); align-items: end; gap: var(--s3) var(--s4); }
+.ov-choice .field > .reason { min-height: 1.25rem; }
+.ov-actions { display: flex; gap: var(--s2); }
+/* The words and the bar keep their room while hidden parts come and go: the buttons above
+   them never move under the pointer. */
+.ov-step { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 240px; align-items: center; gap: var(--s4); min-height: 32px; }
+.ov-words { display: flex; align-items: center; gap: var(--s2); font: var(--t-small); font-weight: 600; color: var(--text); }
+.ov-words .icon { flex: none; }
+.ov-bar { margin-top: 0; height: 10px; }
+/* The bar is the singer's own voice so far: the "good" colour, and the words say it too. */
+.ov-bar i { background: var(--good); }
+.ov-says { grid-column: 1 / -1; min-height: 1.25rem; }
+.ov-says[data-role="close"] { color: var(--text); }
+
+@media (max-width: 639px) {
+  .ownvoice { grid-template-columns: minmax(0, 1fr); }
+  .ov-step { grid-template-columns: minmax(0, 1fr); }
+}

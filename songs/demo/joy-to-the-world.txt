@@ -1,0 +1,76 @@
+#TITLE:Joy to the World
+#ARTIST:Lowell Mason
+#LANGUAGE:English
+#CREATOR:music-trainer demo (tools/build-demo-songs.mjs)
+#COMPOSER:Lowell Mason (died 1872), tune "Antioch", 1836, after phrases from Handel's "Messiah"
+#LYRICIST:Isaac Watts (died 1748), 1719
+#PUBLICDOMAIN:Words printed in 1719 and tune in 1836: published before 1931.
+#SOURCE:Open Hymnal Project, http://openhymnal.org/Midi/Joy_To_The_World-Antioch.mid
+#SOURCESHA256:3815241fcac262b137c5aa2eb63c7864157a4d30c825159e22ebe9ed774e1eec
+#LICENSE:Public domain (the source score; retrieved 2026-10-12)
+#BPM:144
+#GAP:2000
+: 0 7 14 Joy
+: 8 5 13  to
+: 14 2 11  the
+: 16 11 9  world,
+: 28 3 7  the
+: 32 7 6  Lord
+: 40 7 4  is
+: 48 11 2  come!
+- 59
+: 60 3 9 Let
+: 64 11 11  earth
+: 76 3 11  re
+: 80 11 13 ceive
+: 92 3 13  her
+: 96 11 14  King;
+- 107
+: 108 3 14 Let
+: 112 3 14  ev
+: 116 3 13 ~
+: 120 3 11 'ry
+: 124 3 9 ~
+: 128 5 9  heart
+: 134 2 7 ~
+: 136 3 6 ~
+- 139
+: 140 3 14 pre
+: 144 3 14 pare
+: 148 3 13 ~
+: 152 3 11  Him
+: 156 3 9 ~
+: 160 5 9  room,
+: 166 2 7 ~
+: 168 3 6 ~
+- 171
+: 172 3 6 And
+: 176 3 6  Heav'n
+: 180 3 6  and
+: 184 3 6  na
+: 188 2 6 ture
+: 190 2 7 ~
+: 192 11 9  sing,
+- 203
+: 204 2 7 And
+: 206 2 6 ~
+: 208 3 4  Heav'n
+: 212 3 4  and
+: 216 3 4  na
+: 220 2 4 ture
+: 222 2 6 ~
+: 224 11 7  sing,
+- 235
+: 236 2 6 And
+: 238 2 4 ~
+: 240 3 2  Heav'n,
+: 244 7 14 ~
+: 252 3 11  and
+: 256 5 9  Heav'n,
+: 262 2 7 ~
+: 264 3 6 ~
+: 268 3 7  and
+: 272 7 6  na
+: 280 7 4 ture
+: 288 15 2  sing.
+E

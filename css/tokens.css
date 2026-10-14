@@ -1,0 +1,149 @@
+/* tokens.css — the "Night sky" tokens from docs/design/STYLE.md. The ONLY file that may hold
+   a raw colour value; screens and canvas code use the names.
+
+   Theme is data-theme="dusk" | "dawn". index.html always sets it on <html> (from the saved
+   choice or the system setting), so there is one definition of each theme here and no
+   media-query copy to drift. Any element may also carry data-theme to show the other theme
+   inside the page (the stage lab puts the two side by side); give it class "theme-scope"
+   so its own background and text colour follow. */
+
+:root,
+[data-theme="dusk"] {
+  color-scheme: dark;
+  --bg: #0b1020;
+  --surface: #151b30;
+  --raised: #1e2642;
+  --stage: #080c18;
+  --stage-top: #0f1733;            /* top of the sky gradient (decoration, Dusk only) */
+  --scrim: rgba(4, 7, 16, .62);
+
+  --text: #eef2ff;
+  --muted: #a3aed0;
+  --quiet: #7c88ad;
+  --line: #2e3858;
+  --line-strong: #6b79a8;
+
+  --accent: #38bdf8;
+  --accent-ink: #06202c;
+  --good: #4ade80;
+  --close: #fbbf24;
+  --off: #f472b6;
+  --target: #a78bfa;
+  --gold: #ffc861;
+  --gold-fill: #ffc861;
+  --gold-ink: #1a1204;
+  --error: #fca5a5;
+
+  --shadow-card: none;
+  --shadow-sheet: 0 16px 48px rgba(0, 0, 0, .45);
+  --star-opacity: 1;               /* Dawn has no stars: the multiplier is 0 there */
+
+  /* The aurora (living-sky spec, section 5). Decoration only: never text, never the only
+     sign of anything. The three hues are free singing by pitch; none is a verdict colour. */
+  --aurora-low: #2dd4bf;
+  --aurora-mid: #38bdf8;
+  --aurora-high: #818cf8;
+  --aurora-crown: #5eead4;         /* the top third of every tall curtain */
+  --aurora-peak: 1;              /* most a curtain may add at its bright edge, rays included */
+  /* The light of each verdict (curtain, ribbon glow, head halo). On Dusk the verdict colours
+     are already light; Dawn has its own brighter set below. Never text. */
+  --aurora-in: #4ade80;
+  --aurora-close: #fbbf24;
+  --aurora-off: #f472b6;
+  --voice-core: #f4fff8;           /* the crisp line down the middle of the voice ribbon */
+  --meteor: #eef2ff;
+}
+
+[data-theme="dawn"] {
+  color-scheme: light;
+  --bg: #f7f5ef;
+  --surface: #ffffff;
+  --raised: #efece3;
+  --stage: #fbfaf6;
+  --stage-top: #fbfaf6;            /* flat: same as --stage */
+  --scrim: rgba(27, 33, 54, .38);
+
+  --text: #1b2136;
+  --muted: #55607a;
+  --quiet: #5f687d;
+  --line: #d9d5c8;
+  --line-strong: #777d8f;
+
+  --accent: #0369a1;
+  --accent-ink: #ffffff;
+  --good: #116932;
+  --close: #9a4505;
+  --off: #be185d;
+  --target: #6d28d9;
+  --gold: #8a5206;
+  --gold-fill: #f5b83d;
+  --gold-ink: #1a1204;
+  --error: #b91c1c;
+
+  --shadow-card: 0 1px 2px rgba(27, 33, 54, .08);
+  --shadow-sheet: 0 16px 48px rgba(27, 33, 54, .18);
+  --star-opacity: 0;
+
+  /* Dawn: light on a pale sky is saturated colour, not a dark tint (set by eye, 2026-10-12). */
+  --aurora-low: #14b8a6;
+  --aurora-mid: #0ea5e9;
+  --aurora-high: #6366f1;
+  --aurora-crown: #2dd4bf;
+  --aurora-peak: .95;
+  --aurora-in: #10b981;
+  --aurora-close: #f59e0b;
+  --aurora-off: #ec4899;
+  --voice-core: #ffffff;
+  --meteor: #55607a;
+}
+
+:root {
+  /* Washes: an alpha of the role colour. The --a-* numbers are the same alphas for canvas
+     code, which paints the role colour with globalAlpha; keep each pair equal. */
+  --a-target-wash: .22;  --target-wash: color-mix(in srgb, var(--target) 22%, transparent);
+  --a-target-halo: .09;  --target-halo: color-mix(in srgb, var(--target) 9%, transparent);
+  --a-good-wash: .22;    --good-wash: color-mix(in srgb, var(--good) 22%, transparent);
+  --a-close-wash: .20;   --close-wash: color-mix(in srgb, var(--close) 20%, transparent);
+  --a-off-wash: .20;     --off-wash: color-mix(in srgb, var(--off) 20%, transparent);
+  --a-accent-wash: .14;  --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
+  --a-gold-glow: .30;    --gold-glow: color-mix(in srgb, var(--gold) 30%, transparent);
+  --error-wash: color-mix(in srgb, var(--error) 12%, transparent);
+
+  /* Type. No downloads; system-ui is the designed fallback for ui-rounded. */
+  --font-ui: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --t-note: 700 4.5rem/4.75rem var(--font-ui);
+  --t-hero: 700 2.5rem/2.875rem var(--font-ui);
+  --t-h1: 700 1.75rem/2.125rem var(--font-ui);
+  --t-h2: 600 1.25rem/1.625rem var(--font-ui);
+  --t-body: 400 1rem/1.5rem var(--font-ui);
+  --t-small: 400 .875rem/1.25rem var(--font-ui);
+  --t-tiny: 500 .8125rem/1.125rem var(--font-ui);
+
+  /* Space, shape. */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+  --r-s: 8px; --r-m: 14px; --r-l: 20px; --r-pill: 999px;
+
+  /* Motion. */
+  --d-quick: 120ms;
+  --d-base: 200ms;
+  --d-slow: 320ms;
+  --d-reveal: 600ms;
+  --d-breathe: 2.4s;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-in-out: cubic-bezier(.45, 0, .25, 1);
+}
+
+/* The wash tokens above mix a role colour that differs per theme, so they must be
+   re-evaluated wherever a theme is set, not only at the root. */
+[data-theme] {
+  --target-wash: color-mix(in srgb, var(--target) 22%, transparent);
+  --target-halo: color-mix(in srgb, var(--target) 9%, transparent);
+  --good-wash: color-mix(in srgb, var(--good) 22%, transparent);
+  --close-wash: color-mix(in srgb, var(--close) 20%, transparent);
+  --off-wash: color-mix(in srgb, var(--off) 20%, transparent);
+  --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
+  --gold-glow: color-mix(in srgb, var(--gold) 30%, transparent);
+  --error-wash: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+.theme-scope { background: var(--bg); color: var(--text); }
