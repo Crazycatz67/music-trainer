@@ -32,6 +32,10 @@
   --gold: #ffc861;
   --gold-fill: #ffc861;
   --gold-ink: #1a1204;
+  /* Silver: a letter earned by ear (grades spec 4.2). Hues are a GUESS until seen beside the gold. */
+  --silver: #d3dcf2;
+  --silver-fill: #d3dcf2;
+  --silver-glow: color-mix(in srgb, #d3dcf2 30%, transparent);
   --error: #fca5a5;
 
   --shadow-card: none;
@@ -78,6 +82,11 @@
   --gold: #8a5206;
   --gold-fill: #f5b83d;
   --gold-ink: #1a1204;
+  /* Dawn silver: ink for letters and outlines; the fill is too pale to stand alone (1.6 : 1),
+     so a silver fill is always outlined with --silver. */
+  --silver: #4a5674;
+  --silver-fill: #c3cbdd;
+  --silver-glow: color-mix(in srgb, #4a5674 22%, transparent);
   --error: #b91c1c;
 
   --shadow-card: 0 1px 2px rgba(27, 33, 54, .08);

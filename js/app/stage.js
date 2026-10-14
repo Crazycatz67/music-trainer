@@ -57,11 +57,33 @@
 //       kind 'close', no number ("12 notes low" would call a right note wrong; review 2).
 //   isViewJump(fromMidi, toMidi, cfg?) -> a target change this big is cross-faded, not slid
 //   starField(seed, count) -> fixed dots for the Dusk sky
+//   ribbonFromTimeline(timeline, { half = 1.5, joinGapSec = 0.05 }) -> ribbon
+//       ribbon = { half, t0, t1, low, high, segments: [{ t0, t1, pts: [{ t, midi }], m }] }
+//       The smooth path through a stepped timeline (glide, siren): one segment per run of
+//       back-to-back notes, waypoints at each note's middle plus both ends. half: semitones
+//       either side of the centre (1.5 = the spec's band 3 semitones tall). low / high are the
+//       lowest and highest centre; the monotone curve never goes past them.
+//   ribbonMidiAt(ribbon, t) -> midi | null   the centre at take time t (null between passes)
+//   ribbonInside(cents, halfCents, wasIn?, marginCents?) -> boolean | null   with hysteresis
+//   ribbonVerdict(inside, centreCents) -> verdict   kind 'in' "With the path" | 'close'
+//       "Off the path" (with move and an arrow icon); never 'off'. RIBBON_WORDS.
+//   createReadout.push(frame, { ribbon: { midi, half } }): the ribbon stands in for the target.
+//       verdict / kind from ribbonVerdict; cents (and shown.cents) are measured from the
+//       path's nearest EDGE (0 inside); shown.numberText "With the path" inside, else
+//       "40 cents low"; readout.path = { inside, centreCents }.
 //
 // CONTRACT — createStage(host, { config? }) -> stage            [browser only]
 //   stage.el, stage.canvas
 //   stage.set({ state, target, nowFrac, pxPerSec, wide, range, calm, noteStyle, countIn, cursor,
-//               octaveCents, freshTarget, labelClearTopPx, grid, voiceAlpha, nowLine })
+//               octaveCents, freshTarget, labelClearTopPx, grid, voiceAlpha, nowLine, ribbon, ribbonMarks })
+//       ribbon: null | ribbonFromTimeline(...) in the same clock as the frames pushed. Drawn
+//           instead of a band (use target null with it): filled --target-halo, dotted centre,
+//           a dot at the now line, and behind the dot a --good-wash fill where the voice was
+//           inside and hatched --close-wash where it was outside. Readings inside a pass are
+//           judged against it (createReadout's ribbon); between passes there is no target.
+//           The view rests on the middle of the whole path. A new ribbon cross-fades over
+//           targetFadeMs while the loop runs.
+//       ribbonMarks: null | [{ t, midi }] small hollow diamonds on the path (siren breaks)
 //       nowLine: true (default) | false: the upright "now" line and its "now" pill are not
 //           drawn (the voice check's ten notes and six tunes: nothing scrolls there, so a
 //           now-line promises a moving reading that never comes; voice-check review C2).
@@ -113,8 +135,8 @@
 //           null or reset().
 //   stage.debug() -> { centre, goal, runs, leaps, head, tag, out, running, state, width, height, fading }
 //
-// Not here yet (later build items): ribbon targets (glide, siren), the reward layer and the
-// edge glow. addLayer and target.kind leave room for them.
+// Not here yet (later build items): the reward layer and the edge glow. addLayer leaves room
+// for them. debug().ribbon = { dot (the dot's midi or null), marks } while a ribbon is set.
 
 import { nearestNote } from '../notes.js';
 import { auroraSprites, createCurtain, drawCurtain, follow, isLightColour, levelToLv, sharedGuard } from './aurora.js';
@@ -204,6 +226,81 @@ const OCTAVE_VERDICT = Object.freeze({
 
 export function isViewJump(fromMidi, toMidi, cfg = CONFIG.stage) {
   return Number.isFinite(fromMidi) && Number.isFinite(toMidi) && Math.abs(toMidi - fromMidi) > cfg.jumpFadeSemis;
+}
+
+// ---------------------------------------------------------------- pure: ribbons (glide, siren)
+// A timeline cannot hold a glide (contract), so a glide or siren is written as back-to-back
+// semitone steps and the ribbon is the smooth path through them. Monotone cubic (Fritsch and
+// Carlson) and not a plain spline: a plain spline overshoots at the top of a hill, which would
+// draw the path above the highest note the singer was asked for.
+
+export const RIBBON_WORDS = Object.freeze({ in: 'With the path', off: 'Off the path', tagIn: 'on the path' });
+
+export function ribbonFromTimeline(timeline, { half = 1.5, joinGapSec = 0.05 } = {}) {
+  const notes = ((timeline && timeline.notes) || []).filter((n) => n && Number.isFinite(n.midi) && Number.isFinite(n.t) && n.dur > 0);
+  const groups = [];
+  for (const n of notes) {
+    const g = groups[groups.length - 1];
+    if (g && n.t - g.end <= joinGapSec) { g.notes.push(n); g.end = Math.max(g.end, n.t + n.dur); } else groups.push({ notes: [n], end: n.t + n.dur });
+  }
+  const segments = groups.map(({ notes: ns, end }) => {
+    const pts = [{ t: ns[0].t, midi: ns[0].midi }, ...ns.map((n) => ({ t: n.t + n.dur / 2, midi: n.midi })), { t: end, midi: ns[ns.length - 1].midi }];
+    return { t0: ns[0].t, t1: end, pts, m: monotoneSlopes(pts) };
+  });
+  const all = segments.flatMap((s) => s.pts.map((p) => p.midi));
+  return {
+    half, segments,
+    t0: segments.length ? segments[0].t0 : 0, t1: segments.length ? segments[segments.length - 1].t1 : 0,
+    low: all.length ? Math.min(...all) : null, high: all.length ? Math.max(...all) : null,
+  };
+}
+
+function monotoneSlopes(pts) {
+  const n = pts.length, d = [], m = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) { const dt = pts[i + 1].t - pts[i].t; d.push(dt > 0 ? (pts[i + 1].midi - pts[i].midi) / dt : 0); }
+  if (n < 2) return m;
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); m[i] = k * a * d[i]; m[i + 1] = k * b * d[i]; }
+  }
+  return m;
+}
+
+// The path's centre (midi) at take time t (seconds), or null between and outside its passes.
+export function ribbonMidiAt(ribbon, t) {
+  if (!ribbon || !Number.isFinite(t)) return null;
+  for (const s of ribbon.segments) {
+    if (t < s.t0 || t > s.t1) continue;
+    const p = s.pts;
+    let lo = 0, hi = p.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (p[mid].t <= t) lo = mid; else hi = mid; }
+    const a = p[lo], b = p[hi], h0 = b.t - a.t;
+    if (!(h0 > 0)) return a.midi;
+    const u = (t - a.t) / h0, u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * a.midi + (u3 - 2 * u2 + u) * h0 * s.m[lo] + (-2 * u3 + 3 * u2) * b.midi + (u3 - u2) * h0 * s.m[hi];
+  }
+  return null;
+}
+
+// Inside the path or not, with a little hysteresis (marginCents) so a voice riding the edge
+// does not flicker between the two colours. wasIn null = no memory.
+export function ribbonInside(cents, halfCents, wasIn = null, marginCents = CONFIG.verdict.marginCents) {
+  if (!Number.isFinite(cents)) return null;
+  const a = Math.abs(cents);
+  if (wasIn === true) return a <= halfCents + marginCents;
+  if (wasIn === false) return a < halfCents - marginCents;
+  return a <= halfCents;
+}
+
+// The warm-up's two gentle verdicts (spec 7.1): "With the path" (the good style) and
+// "Off the path" (the close style, with the arrow the voice should move). Never 'off' (pink).
+export function ribbonVerdict(inside, cents) {
+  if (inside) return { kind: 'in', dir: null, word: RIBBON_WORDS.in, icon: 'tick', move: null, path: true };
+  const dir = cents < 0 ? 'low' : 'high', move = dir === 'low' ? 'up' : 'down';
+  return { kind: 'close', dir, word: RIBBON_WORDS.off, icon: move === 'up' ? 'arrow-up' : 'arrow-down', move, path: true };
 }
 
 // ---------------------------------------------------------------- pure: words and numbers
@@ -368,16 +465,19 @@ export function starField(seed = CONFIG.stage.starSeed, count = CONFIG.stage.sta
 export function createReadout(config = CONFIG) {
   const gate = createVerdictGate(config.verdict);
   const minGap = 1 / config.hud.readoutHz;
-  let shown = null, shownT = -Infinity, unvoicedSince = null, noisySince = null;
+  let shown = null, shownT = -Infinity, unvoicedSince = null, noisySince = null, pathIn = null;
 
   const listeningShown = () => ({
     listening: true, noteMidi: null, noteText: '–', cents: null, numberText: '', tagText: '', verdict: LISTENING,
   });
 
   return {
-    push(frame, { target = null, level = 0, noteStyle = 'letters', octaveCents = null } = {}) {
+    push(frame, { target = null, level = 0, noteStyle = 'letters', octaveCents = null, ribbon = null } = {}) {
       const t = frame.t;
       const voiced = !!frame.voiced && Number.isFinite(frame.midi);
+      // A ribbon (glide, siren) stands in for the target: its centre at this reading's time.
+      const path = ribbon && Number.isFinite(ribbon.midi) && ribbon.half > 0 ? ribbon : null;
+      if (path) target = path.midi; else pathIn = null;
       const hasTarget = Number.isFinite(target);
       const due = t - shownT >= minGap;
 
@@ -401,6 +501,27 @@ export function createReadout(config = CONFIG) {
       unvoicedSince = null;
       noisySince = null;
       const note = nearestNote(frame.midi);
+      if (path) {
+        // Distance is measured from the path's EDGE: inside it nothing is wrong, so the
+        // needle rests in the middle and the words say "With the path".
+        const centreCents = 100 * (frame.midi - path.midi), halfCents = 100 * path.half;
+        pathIn = ribbonInside(centreCents, halfCents, pathIn, config.verdict.marginCents);
+        const edge = pathIn ? 0 : centreCents - Math.sign(centreCents) * halfCents;
+        const v = ribbonVerdict(pathIn, centreCents);
+        if (!shown || due) {
+          const name = displayNote(frame.midi, noteStyle);
+          shown = {
+            listening: false, noteMidi: note.midi, noteText: name.text, noteBase: name.base, noteOctave: name.octave,
+            cents: roundCents(edge), numberText: pathIn ? RIBBON_WORDS.in : numberText(edge, config.verdict),
+            tagText: pathIn ? RIBBON_WORDS.tagIn : targetTagText(edge, config.verdict), verdict: v,
+          };
+          shownT = t;
+        }
+        return {
+          t, voiced: true, midi: frame.midi, level, hasTarget: true, target: path.midi, note, against: path.midi,
+          cents: edge, verdict: v, noClearNoteMs: 0, shown, kind: v.kind, path: { inside: pathIn, centreCents },
+        };
+      }
       const against = hasTarget ? target : note.midi;
       const cents = 100 * (frame.midi - against);
       const gated = hasTarget ? gate.push(cents, t * 1000) : FREE;
@@ -423,7 +544,7 @@ export function createReadout(config = CONFIG) {
         kind: oct ? 'close' : hasTarget && Math.abs(cents) > config.verdict.farCents ? 'off' : v.kind,
       };
     },
-    reset() { gate.reset(); shown = null; shownT = -Infinity; unvoicedSince = null; noisySince = null; },
+    reset() { gate.reset(); shown = null; shownT = -Infinity; unvoicedSince = null; noisySince = null; pathIn = null; },
   };
 }
 
@@ -471,7 +592,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     state: 'idle', target: null, nowFrac: C.nowFracFree, pxPerSec: C.pxPerSecExercise,
     wide: false, range: null, calm: false, noteStyle: 'letters', countIn: null, cursor: null,
     octaveCents: null, freshTarget: false, labelClearTopPx: 0, grid: 'full', voiceAlpha: 1, nowLine: true,
-    aurora: null, auroraRange: null,
+    aurora: null, auroraRange: null, ribbon: null, ribbonMarks: null,
   };
   let points = [], take = null, last = null, lastVoiced = null;
   // The aurora (js/app/aurora.js). Each trail point keeps the loudness, hold growth and hue it
@@ -500,6 +621,8 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
   let width = 0, height = 0, dpr = 1, tokens = null;
   let raf = 0, wanted = false, visible = true, lastRenderMs = 0, toneStartMs = 0, labelAtMs = -Infinity;
   let onResume = null, prevTarget = null, targetSinceMs = -Infinity;
+  // A ribbon that changes while the loop runs fades like a band: the old one out, the new one in.
+  let prevRibbon = null, ribbonSinceMs = -Infinity, ribbonDot = null;
   // A change of picture in progress: { sinceMs, ms, fromCentre, cutT }.
   //   fromCentre  a number: the old picture is drawn where it was (centred there) and fades
   //               out while the new one fades in. null: the view has not moved.
@@ -724,6 +847,140 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(displayNote(tg.midi, st.noteStyle).text, lx, L.yOfMidi(tg.midi + inTune) - 3);
+  }
+
+  // ---- the ribbon (glide, siren; spec 5.2 layer 3): a smooth band 2 * half semitones tall,
+  // filled --target-halo, with a dotted centre line and a dot that travels along it at the
+  // now line. Behind the dot it fills --good-wash where the voice was inside and hatched
+  // --close-wash where it was outside (spec 7.1); unvoiced stretches stay plain.
+  function drawRibbons(L, now, nowMs, pts) {
+    const k = wanted && C.targetFadeMs > 0 ? Math.min(1, Math.max(0, (nowMs - ribbonSinceMs) / C.targetFadeMs)) : 1;
+    if (k < 1 && prevRibbon) drawRibbon(L, now, prevRibbon, 1 - k, null, null);
+    else if (k >= 1) prevRibbon = null;
+    ribbonDot = st.ribbon ? ribbonMidiAt(st.ribbon, now) : null;
+    if (st.ribbon) drawRibbon(L, now, st.ribbon, k, pts, st.ribbonMarks);
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+  }
+
+  function drawRibbon(L, now, rb, a, pts, marks) {
+    if (!rb || !(a > 0)) return;
+    const half = rb.half;
+    const tLeft = now - (L.nowX - L.plotX) / L.pxPerSec, tRight = now + (width - L.nowX) / L.pxPerSec;
+    const step = 3 / L.pxPerSec;           // a sample every 3 px: smooth at any speed
+    for (const seg of rb.segments) {
+      const a0 = Math.max(seg.t0, tLeft), a1 = Math.min(seg.t1, tRight);
+      if (a1 <= a0) continue;
+      const ts = [];
+      for (let t = a0; t < a1; t += step) ts.push(t);
+      ts.push(a1);
+      const xs = ts.map((t) => L.xOfTime(t, now)), ms = ts.map((t) => ribbonMidiAt(rb, t));
+      const outline = () => {
+        ctx.beginPath();
+        for (let i = 0; i < ts.length; i++) ctx[i ? 'lineTo' : 'moveTo'](xs[i], L.yOfMidi(ms[i] + half));
+        for (let i = ts.length - 1; i >= 0; i--) ctx.lineTo(xs[i], L.yOfMidi(ms[i] - half));
+        ctx.closePath();
+      };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(L.plotX, 0, width - L.plotX, height);
+      ctx.clip();
+      outline();
+      ctx.fillStyle = tokens.target;
+      ctx.globalAlpha = tokens.aTargetHalo * a;
+      ctx.fill();
+      if (pts && pts.length) {
+        ctx.save();
+        outline();
+        ctx.clip();
+        fillBehind(L, now, pts, Math.max(a0, seg.t0), Math.min(a1, now), a);
+        ctx.restore();
+      }
+      // Faint edges, so "inside" has a line to be inside of on a pale (Dawn) sky.
+      ctx.globalAlpha = 0.35 * a;
+      ctx.strokeStyle = tokens.target;
+      ctx.lineWidth = 1;
+      for (const sgn of [1, -1]) {
+        ctx.beginPath();
+        for (let i = 0; i < ts.length; i++) ctx[i ? 'lineTo' : 'moveTo'](xs[i], L.yOfMidi(ms[i] + sgn * half));
+        ctx.stroke();
+      }
+      ctx.globalAlpha = a;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([2, 5]);
+      ctx.beginPath();
+      for (let i = 0; i < ts.length; i++) ctx[i ? 'lineTo' : 'moveTo'](xs[i], L.yOfMidi(ms[i]));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+    // Break markers (siren): small hollow diamonds left on the path.
+    if (marks) {
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = tokens.text;
+      ctx.lineWidth = 1.5;
+      for (const mk of marks) {
+        const x = L.xOfTime(mk.t, now);
+        if (x < L.plotX || x > width || !Number.isFinite(mk.midi)) continue;
+        const y = L.yOfMidi(mk.midi), r = 6;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+    // The dot to follow, at the now line, only while the path is passing it.
+    const dm = ribbonMidiAt(rb, now);
+    if (dm !== null) {
+      const y = L.yOfMidi(dm);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = tokens.target;
+      ctx.strokeStyle = tokens.stage;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(L.nowX, y, 6, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Runs of the same kind are filled as one slice: in = wash, close = hatched wash.
+  function fillBehind(L, now, pts, t0, t1, a) {
+    if (!(t1 > t0)) return;
+    let runKind = null, runX0 = 0;
+    const flush = (x1) => {
+      if (runKind === 'in') {
+        ctx.globalAlpha = tokens.aGoodWash * a;
+        ctx.fillStyle = light ? tokens.auroraIn : tokens.good;   // Dawn: tokens.good reads as a grey slab
+        ctx.fillRect(runX0, 0, x1 - runX0, height);
+      } else if (runKind === 'close') {
+        ctx.globalAlpha = 0.5 * tokens.aGoodWash * a;
+        ctx.fillStyle = tokens.close;
+        ctx.fillRect(runX0, 0, x1 - runX0, height);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(runX0, 0, x1 - runX0, height);
+        ctx.clip();
+        ctx.globalAlpha = 0.6 * a;
+        ctx.strokeStyle = tokens.close;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        // Hatching, anchored to the time axis so it travels with the take, never shimmers.
+        const off = ((L.xOfTime(0, now) % 8) + 8) % 8;
+        for (let x = Math.floor((runX0 - height - off) / 8) * 8 + off; x < x1; x += 8) { ctx.moveTo(x, height); ctx.lineTo(x + height, 0); }
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.t < t0 || p.t > t1) continue;
+      const kind = p.midi === null ? null : p.kind === 'in' ? 'in' : 'close';
+      const x = L.xOfTime(p.t, now);
+      if (kind !== runKind) { flush(x); runKind = kind; runX0 = x; }
+    }
+    flush(L.xOfTime(t1, now));
   }
 
   // ---- the aurora: under the target band and the voice line, clipped to the plot (never over
@@ -1217,7 +1474,10 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     // (it could not bring it into view anyway, and the band would slide for nothing).
     const octaveOut = !!(st.octaveCents && last && last.voiced && last.verdict.octave);
     const focus = hi >= lo && !octaveOut ? (lo + hi) / 2 : null;
-    goal = centreGoal({ goal, focus, target: st.target ? st.target.midi : null, lanes }, C);
+    // A ribbon owns the middle as a band does: the middle of its whole path, so the view
+    // rests still while the path climbs and falls through it.
+    const anchor = st.target ? st.target.midi : st.ribbon && Number.isFinite(st.ribbon.low) ? (st.ribbon.low + st.ribbon.high) / 2 : null;
+    goal = centreGoal({ goal, focus, target: anchor, lanes }, C);
     const dt = Math.min(0.1, Math.max(0, (nowMs - lastRenderMs) / 1000));
     // The first picture after a reset is placed, not moved: nothing was on screen to jump.
     // holdUntilMs: a fresh target waits for the old trail to fade before the view slides.
@@ -1326,6 +1586,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     }
     auroraMs = performance.now() - tA;
     if (move && move.lanesOnly) drawTarget(L, now, nowMs); else drawTarget(L, now, nowMs, L0, mk);
+    drawRibbons(L, now, nowMs, pts);
     if (review) lastRuns = drawVoice(L, pts, now);
     else if (move && move.cutT === null) {
       // A fit that dims the line: the old picture keeps the strength it had, so the line
@@ -1396,6 +1657,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
   function describeForLabel() {
     const parts = [st.state === 'review' ? 'Your take.' : 'Live pitch line.'];
     if (st.target) parts.push(`Target ${displayNote(st.target.midi, st.noteStyle).text}.`);
+    else if (st.ribbon) parts.push('A path to follow with your voice.');
     const s = last && last.shown;
     if (st.state === 'live' && s && !s.listening) {
       parts.push(s.verdict && s.verdict.octave ? `You are on ${s.noteText}. ${s.verdict.word}.`
@@ -1463,7 +1725,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
   return {
     el: root, canvas,
     set(patch = {}) {
-      const before = st.state, targetBefore = st.target, calmBefore = !!st.calm;
+      const before = st.state, targetBefore = st.target, calmBefore = !!st.calm, ribbonBefore = st.ribbon;
       let jumped = false;
       Object.assign(st, patch);
       if (!!st.calm !== calmBefore && tokens) buildSprites();
@@ -1506,6 +1768,11 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
         travel = null;
       }
       if (st.state === 'tone' && before !== 'tone') toneStartMs = performance.now();
+      if ('ribbon' in patch && patch.ribbon !== ribbonBefore) {
+        prevRibbon = wanted ? ribbonBefore : null;
+        ribbonSinceMs = performance.now();
+        readout.reset();
+      }
       if ('target' in patch) readout.reset();
       syncCard();
       labelAtMs = -Infinity;
@@ -1513,7 +1780,11 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     },
     push(frame, level = 0) {
       if (st.state !== 'live') return last;
-      last = readout.push(frame, { target: st.target ? st.target.midi : null, level, noteStyle: st.noteStyle, octaveCents: st.octaveCents });
+      const rm = st.ribbon ? ribbonMidiAt(st.ribbon, frame.t) : null;
+      last = readout.push(frame, {
+        target: st.target ? st.target.midi : null, level, noteStyle: st.noteStyle, octaveCents: st.octaveCents,
+        ribbon: rm === null ? null : { midi: rm, half: st.ribbon.half },
+      });
       if (last.voiced) { lastVoiced = { t: last.t, midi: last.midi }; voicedAtMs = performance.now(); }
       const dt = pushT === null ? 0 : frame.t - pushT;
       // The clock jumped (an exercise reopened the microphone and left a gap): the whole trail
@@ -1612,7 +1883,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     debug: () => ({
       centre, goal, runs: lastRuns, leaps: lastLeaps, head: headState, running: !!raf, state: st.state, width, height,
       tag: tagMark.a > 0.01 ? tagMark.text : '', out: outMark.a > 0.01 ? outMark.text : '', fading: !!move,
-      fit: fitTo ? { ...fitTo } : null, lanes: shownLanes, grid: st.grid, voiceAlpha: st.voiceAlpha, nowLine: st.nowLine !== false,
+      fit: fitTo ? { ...fitTo } : null, lanes: shownLanes, ribbon: st.ribbon ? { dot: ribbonDot, marks: (st.ribbonMarks || []).length } : null, grid: st.grid, voiceAlpha: st.voiceAlpha, nowLine: st.nowLine !== false,
       // The curtain's last frame: milliseconds spent on it, columns drawn, the guard's step.
       auroraMs, auroraCols, auroraTier, sparks: lastSparks, halo: Number(haloK.toFixed(2)),
     }),

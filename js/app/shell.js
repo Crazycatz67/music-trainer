@@ -341,9 +341,12 @@ export const placeholderScreens = {
     // sing-back comes back later as its "in one breath" mode.
     const names = ['Glide warm-up', 'Find your range', 'Match and hold', 'Siren', 'Sing a constellation', 'Eyes closed'];
     const built = {
+      'Glide warm-up': ['#/practice/glide', '3 glides, about 30 seconds.'],
+      'Siren': ['#/practice/siren', '2 sirens, about 25 seconds.'],
       'Find your range': ['#/practice/range', 'Two steps, about one minute. Exercises then fit your voice.'],
       'Match and hold': ['#/practice/match', '5 notes, about 90 seconds.'],
       'Sing a constellation': ['#/practice/constellation', '12 star figures to draw with your voice.'],
+      'Eyes closed': ['#/practice/eyes-closed', '3 notes, about 30 seconds.'],
     };
     view.append(
       h('div', { class: 'title-row' }, h('h1', { tabindex: '-1' }, 'Practice')),

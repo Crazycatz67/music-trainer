@@ -91,7 +91,8 @@
 //         combo, mods, at, takeId }. `counts` / `accuracy` from a judge or judgeFrames.
 //         takeId: the take's id as a string, or null; a saved best reads back with it.
 //   Personal bests (all pure; bests = { v: 1, songs: { [songId]: { [modKey]: result } } })
-//     modKey(mods, config?) -> 'plain' or the switched-on mods joined with '+', in config order
+//     modKey(mods, config?) -> 'plain' or the switched-on SILVER mods joined with '+', in config
+//         order ('noLine'); full-credit mods (noGuide, slower, keyDown) share 'plain'
 //     better(a, b, config?) -> true when result a beats b: accuracy, then letter, then the
 //         EARLIER date (a take that only ties does not replace the best). b missing -> true.
 //     updateBests(bests, songId, result, config?) -> { bests, isBest, previous }
@@ -374,8 +375,11 @@ export function resultOf({ counts, accuracy, lineLevels = [], mods = {}, at = nu
   };
 }
 
+// Only a way that changes the letter (silver: "By ear") gets its own best. The full-credit
+// ways (No guide voice; Slower and Lower key when they exist) share the usual best: their
+// letter means the same thing (grades spec 10.1 and 20).
 export function modKey(mods, config = GRADES) {
-  return onMods(mods, config).join('+') || 'plain';
+  return onMods(mods, config).filter((k) => config.mods[k].silver).join('+') || 'plain';
 }
 
 const rankOf = (letter, config) => {
@@ -430,8 +434,10 @@ function cleanBests(raw, config) {
     for (const key of Object.keys(sets)) {
       const r = cleanResult(sets[key], config);
       // The key is worked out again from the result, so a hand-edited key cannot put a
-      // hidden-line best in the plain column.
-      if (r && modKey(r.mods, config) === key) kept[key] = r;
+      // hidden-line best in the plain column. A best saved under an older key (before
+      // "No guide voice" shared the usual best) moves to its key now; the better one stays.
+      const k = r ? modKey(r.mods, config) : null;
+      if (r && (!kept[k] || better(r, kept[k], config))) kept[k] = r;
     }
     if (Object.keys(kept).length) out.songs[id] = kept;
   }

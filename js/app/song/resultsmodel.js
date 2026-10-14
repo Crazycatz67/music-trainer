@@ -26,7 +26,7 @@
 //       bars: hist.bins as [{ from, to, count, height 0..1, zone }]; farLow / farHigh the
 //       same for readings beyond the range. height = count over the tallest bar's count
 //       (the far bars included). zone 'good' | 'close' | 'off' by the bar's INNER edge
-//       against the judge's first two windows (with 10-cent bars: six good, four close).
+//       against the judge's first two windows (with 10-cent bars and windows 35 / 60: eight good, four close).
 //       middle: { cents (whole), at 0..1 across the bars } | null.
 //       spread: { from, to (cents), fromAt, toAt (0..1), half (whole cents) } | null (needs q1, q3).
 //       word: 'very steady' | 'steady' | 'wavering' | null (steadyWord).
@@ -39,6 +39,7 @@
 //       next-letter sentence; panel false = the full layer only. shower: a new best WITH a
 //       letter (never for practice). `bests` is the store BEFORE this take.
 //   runWords(combo, config?) -> 'Longest run: 6 lines with the singer' | null (under results.minRunLines)
+//   (Every 'A · 78 %' below is written with no-break spaces, U+00A0, around '·' and before '%'.)
 //   takeWords(result) -> { words, chips: [text] }   a take row: 'A · 78 %' | 'Finding it' |
 //         'part of the song · 71 %' | '' ; chips 'By ear', 'No guide voice'
 //   letterWords(result) -> 'A · 78 %' | 'Finding it' | ''
@@ -62,7 +63,8 @@ export const JUDGE_WORDS = Object.freeze({ great: 'In tune', good: 'Close', ok: 
 export const RESULT_WORDS = Object.freeze({
   countsNote: 'of the time you sang',
   howButton: 'How the percent is worked out',
-  how: 'In tune counts in full. Close counts a third. Nearby counts a sixth. Notes an octave away count as the note.',
+  // True of GRADES.judge.windows' points (300 / 200 / 100); resultsmodel.check compares them.
+  how: 'In tune counts in full. Close counts two thirds. Nearby counts a third. Notes an octave away count as the note.',
   unsungOne: '1 line not sung. Silence never lowers the percent.',
   unsungMany: '{n} lines not sung. Silence never lowers the percent.',
   pictureTitle: 'Where your notes landed',
@@ -73,6 +75,7 @@ export const RESULT_WORDS = Object.freeze({
   middleLow: 'Your middle: {n} cents low.',
   middleHigh: 'Your middle: {n} cents high.',
   half: 'Half your notes landed within {half} cents of it.',
+  halfOne: 'Half your notes landed within 1 cent of it.',
   held: 'Held notes: {word}.',
   verySteady: 'very steady', steady: 'steady', wavering: 'wavering',
   run: 'Longest run: {n} lines with the singer',
@@ -137,8 +140,8 @@ export function picture(hist, steady, { state = null } = {}, config = GRADES) {
   };
   if (!hist || !(hist.n > 0) || !Array.isArray(hist.bins) || state === 'tooShort') return out;
   const tallest = Math.max(1, hist.under || 0, hist.over || 0, ...hist.bins.map((b) => b.count));
-  // By the bar's inner edge: the bar from 20 to 30 straddles "In tune" (25) and is drawn as
-  // In tune (the picture is a shape; the exact shares are in the counts).
+  // By the bar's inner edge: a bar across the "In tune" edge (30 to 40 across 35) is drawn
+  // as In tune (the picture is a shape; the exact shares are in the counts).
   const zone = (b) => {
     const inner = Math.min(Math.abs(b.from), Math.abs(b.to));
     return inner < W[0].cents ? 'good' : inner < W[1].cents ? 'close' : 'off';
@@ -160,7 +163,7 @@ export function picture(hist, steady, { state = null } = {}, config = GRADES) {
   if (q1 !== null && q3 !== null) {
     const half = Math.round((q3 - q1) / 2);
     out.spread = { from: q1, to: q3, fromAt: along(q1), toAt: along(q3), half };
-    out.caption.push(fill(R.half, { half }));
+    out.caption.push(half === 1 ? R.halfOne : fill(R.half, { half }));
   }
   if (word) out.caption.push(fill(R.held, { word }));
   return out;
@@ -170,7 +173,8 @@ export function picture(hist, steady, { state = null } = {}, config = GRADES) {
 
 export const letterWords = (result) => {
   if (!result || !Number.isFinite(result.accuracy)) return '';
-  if (result.letter) return `${result.letter} · ${wholePercent(result.accuracy)} %`;
+  // No-break spaces: "SS · 99 %" never breaks over two lines (the panel split it once).
+  if (result.letter) return `${result.letter}\u00a0·\u00a0${wholePercent(result.accuracy)}\u00a0%`;
   return result.state === 'finding' || !result.state ? R.finding : '';
 };
 
@@ -227,7 +231,7 @@ export function takeWords(result) {
   if (mods.noLine) chips.push(R.byEar);
   if (mods.noGuide) chips.push(R.noGuide);
   if (!result || !Number.isFinite(result.accuracy) || result.state === 'tooShort') return { words: '', chips };
-  if (result.state === 'sangTooLittle') return { words: fill(R.partRow, { percent: `${wholePercent(result.accuracy)} %` }), chips };
+  if (result.state === 'sangTooLittle') return { words: fill(R.partRow, { percent: `${wholePercent(result.accuracy)}\u00a0%` }), chips };
   return { words: letterWords(result), chips };
 }
 

@@ -14,10 +14,13 @@ export const GRADES = Object.freeze({
   judge: Object.freeze({
     // A reading this near the target (octave folded) earns these points; farther is a miss.
     // Nearest first. `id` names the count in judge.counts().
+    // Owner, 2026-10-14: "it cant be too harsh ... there needs to be some give on the
+    // scoring". So the windows are wider than osu!'s and the points fall in thirds (full,
+    // two thirds, one third) instead of 1, 1/3, 1/6 (was 25 / 50 / 100 cents at 300 / 100 / 50).
     windows: Object.freeze([
-      Object.freeze({ id: 'great', cents: 25, points: 300 }),            // GUESS
-      Object.freeze({ id: 'good', cents: 50, points: 100 }),             // GUESS
-      Object.freeze({ id: 'ok', cents: 100, points: 50 }),               // GUESS
+      Object.freeze({ id: 'great', cents: 35, points: 300 }),            // GUESS
+      Object.freeze({ id: 'good', cents: 60, points: 200 }),             // GUESS
+      Object.freeze({ id: 'ok', cents: 100, points: 100 }),              // GUESS
     ]),
     // A reading under this clarity is noise or breath and is not judged at all. The same
     // number as the detector's own gate (js/pitch.js clarityMin), so today it changes
@@ -50,7 +53,8 @@ export const GRADES = Object.freeze({
   // 'finding'. `topShare`: also refused while under judge.topSongShare of the song was sung.
   letters: Object.freeze([
     Object.freeze({ letter: 'SS', min: 95, noLowestLine: true, topShare: true }),    // GUESS
-    Object.freeze({ letter: 'S', min: 85, noLowestLine: true, topShare: true }),     // GUESS
+    // Owner, 2026-10-14: "s is 90 plus and 95 plus is ss" (was 85).
+    Object.freeze({ letter: 'S', min: 90, noLowestLine: true, topShare: true }),     // GUESS
     Object.freeze({ letter: 'A', min: 70, noLowestLine: false, topShare: false }),   // GUESS
     Object.freeze({ letter: 'B', min: 55, noLowestLine: false, topShare: false }),   // GUESS
     Object.freeze({ letter: 'C', min: 40, noLowestLine: false, topShare: false }),   // GUESS
@@ -77,7 +81,7 @@ export const GRADES = Object.freeze({
   histogram: Object.freeze({
     binCents: 10,                                                        // GUESS
     rangeCents: 100,         // bins run from -rangeCents to +rangeCents, plus one each side  GUESS
-    onCents: 25,             // "on the note" for the low / on / high shares  GUESS
+    onCents: 35,             // "on the note" for the low / on / high shares: the In tune window  GUESS
   }),
 
   steadiness: Object.freeze({

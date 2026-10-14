@@ -1,0 +1,69 @@
+/* eyesclosed.css — Eyes closed (js/app/exercises/eyesclosed.js). Colours and sizes come from
+   tokens.css. The curtain is --surface, "a slightly lighter sky" (spec 7.6): close enough to
+   --stage in both themes that its wipe cannot flash (the lab measures the step). */
+
+.eyes-closed .pitch-main { position: relative; }
+/* The stage gives up some height to the result's reserved place under it, as Long note's does. */
+.eyes-closed .stage { height: clamp(260px, calc(100vh - 480px), 480px); }
+
+/* The curtain: wipes down from the top (clip from the bottom edge up to nothing), lifts the
+   same way back. Up, it is out of the reading order once it has gone. */
+.ec-curtain { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s4); padding: var(--s5); border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); color: var(--muted); text-align: center; clip-path: inset(0 0 0 0); visibility: visible; transition: clip-path var(--ec-ms, 600ms) var(--ease-in-out), visibility 0s linear 0s; }
+.ec-curtain[data-state="up"] { clip-path: inset(0 0 100% 0); visibility: hidden; transition: clip-path var(--ec-ms, 600ms) var(--ease-in-out), visibility 0s linear var(--ec-ms, 600ms); }
+.ec-curtain-text { max-width: 28em; font: var(--t-h2); color: var(--text); }
+.ec-eye { color: var(--muted); }
+
+/* Under the curtain the read-out's note, meter, number and verdict go too; the mic level bar
+   stays, the one proof that it is listening. */
+.eyes-closed .hud > * { transition: opacity var(--ec-ms, 600ms) var(--ease-in-out), visibility 0s linear 0s; }
+/* Hidden only after the fade, so the read-out eases out with the wipe instead of vanishing. */
+.eyes-closed.ec-blind .hud > :not(.level) { opacity: 0; visibility: hidden; transition: opacity var(--ec-ms, 600ms) var(--ease-in-out), visibility 0s linear var(--ec-ms, 600ms); }
+
+/* The reveal picture, over the stage's own canvas. It is shown under the curtain, so the lift
+   uncovers it: it never appears by itself in the open. */
+.ec-plate { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+.ec-plate[data-shown="no"] { display: none; }
+.eyes-closed .stage-chips { z-index: 2; }
+/* Paused over the reveal (review 2026-10-14): the Paused card sits above the picture, and the
+   live canvas under it is hidden, so the dimmed plate never shows a second grid through it. */
+.eyes-closed .stage-card { z-index: 2; }
+.eyes-closed .stage:has(> .ec-plate:not([data-shown="no"])) > canvas:not(.ec-plate) { visibility: hidden; }
+
+/* The verdict and the compare strip: a reserved place under the stage, so nothing moves when
+   they come and go. Wide areas, so they fade. */
+.ec-slot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); gap: var(--s4); min-height: 6.5rem; align-items: start; }
+.ec-card, .ec-compare { padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
+.ec-card[data-shown="no"], .ec-compare[data-shown="no"] { opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
+.ec-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); font: var(--t-h1); color: var(--text); }
+.ec-head .icon { flex: none; color: var(--muted); }
+.ec-head[data-kind="in"] .icon { color: var(--good); }
+.ec-head .chip { font: var(--t-small); font-weight: 600; }
+.ec-line { margin-top: var(--s1); font: var(--t-body); font-variant-numeric: tabular-nums; color: var(--text); }
+.ec-card .action-row { margin-top: var(--s3); }
+
+/* Two labelled bars: words and number first, the bar is only a picture of them. */
+.ec-compare { display: grid; gap: var(--s2); }
+.ec-bar { display: grid; gap: var(--s1); font: var(--t-small); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ec-track { display: block; height: 8px; border-radius: var(--r-pill); background: var(--line); overflow: hidden; }
+.ec-track i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(var(--k, 0)); background: var(--quiet); animation: ec-grow var(--d-reveal) var(--ease) both; }
+/* Eyes closed is this screen's own number, so it is the stronger ink. Not --accent: that
+   colour means "you can press this" (STYLE.md section 1). */
+.ec-bar[data-kind="blind"] .ec-track i { background: var(--text); }
+@keyframes ec-grow { from { transform: scaleX(0); } to { transform: scaleX(var(--k, 0)); } }
+
+@media (max-width: 899px), (max-height: 719px) {
+  .ec-slot { grid-template-columns: minmax(0, 1fr); min-height: 5rem; }
+  .ec-head { font: var(--t-h2); }
+  .ec-curtain-text { font: var(--t-body); }
+  .ec-eye { width: 56px; height: 56px; }
+}
+/* Calm motion and reduced motion: the curtain fades instead of wiping (the screen sets the
+   200 ms in --ec-ms). */
+:root[data-calm="on"] .ec-curtain, :root[data-calm="on"] .ec-curtain[data-state="up"] { clip-path: none; transition-property: opacity, visibility; }
+:root[data-calm="on"] .ec-curtain[data-state="up"] { opacity: 0; }
+:root[data-calm="on"] .ec-track i { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ec-curtain, .ec-curtain[data-state="up"] { clip-path: none; transition-property: opacity, visibility; }
+  .ec-curtain[data-state="up"] { opacity: 0; }
+  .ec-track i { animation: none; }
+}

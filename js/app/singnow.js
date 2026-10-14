@@ -66,7 +66,8 @@
 //       autoWords (the switch), auto: null | { state: 'looking' | 'done', status, why,
 //       searched, fromCache, source } (the open song's automatic lookup),
 //       stageMs, auroraMs (the last frame's cost and the curtain's share), auroraCols,
-//       auroraTier (the guard: 0 full, 1 wide columns, 2 off), lineDrawn, voiceKind,
+//       auroraTier (the guard: 0 full, 1 wide columns, 2 off), lineDrawn, headDrawn, voiceKind,
+//       ways: { noLine?, noGuide? } (the ways to sing on for the open song, grades spec 10),
 //       stars: [{ i, level: 'with' | 'close' }] (the row as drawn),
 //       end: null | { open, waiting (the shooting star is on its way), practice, best,
 //                     with, close, sung, total, bestLine, practise } (the end panel),
@@ -110,6 +111,10 @@ import { curveAt } from './analyse/curve.js';
 import { auroraSprites, createCurtain, drawCurtain, follow, isLightColour, levelToLv, sharedGuard, trailK } from './aurora.js';
 import { LEVEL_WORDS, LEVEL_RANK, addReading, better, endChimePlan, foldCents, headingWords, heardToEnd, newBest, newCounts, reasonWords, scoreLines, settle, summarise } from './song/lineresults.js';
 import { canChime, playChime, starSvg } from './rewards.js';
+import { bestAny, readBests, retryNudge, saveBests, updateBests } from './song/grades.js';
+import { letterWords, takeResults, takeWords } from './song/resultsmodel.js';
+import { medallionModel, mountMedallion, wholePercent } from './song/medallion.js';
+import { resultsView } from './song/resultsview.js';
 import { createSynth } from '../synth.js';
 
 // ---------------------------------------------------------------- numbers and words
@@ -287,6 +292,8 @@ export function bootSingNow(root, given = {}) {
   // one pair for every song: they are now only where a song with no mix of its own starts,
   // and the sliders no longer write them.
   if (!prefs.mixes || typeof prefs.mixes !== 'object' || Array.isArray(prefs.mixes)) prefs.mixes = {};
+  // The ways to sing, per song: { [songId]: { noLine?, noGuide? } } (grades spec 10.1).
+  if (!prefs.ways || typeof prefs.ways !== 'object' || Array.isArray(prefs.ways)) prefs.ways = {};
   const mixFor = (id) => songMix(id === null ? null : prefs.mixes[id], { music: SONG.levels.music, singer: prefs.guideLevel, volume: prefs.volume });
   prefs.autoWords = typeof prefs.autoWords === 'boolean' ? prefs.autoWords : SONG.words.autoLookup;
   prefs.wordsNoticeSeen = prefs.wordsNoticeSeen === true;
@@ -318,7 +325,7 @@ export function bootSingNow(root, given = {}) {
   // The aurora under the voice line (sky spec 1): lvNow is the smoothed loudness the next
   // trail point carries, lane the note range drawStage last used (the free colour's hue).
   let lvNow = null, lvAt = 0, lane = { lo: 52, hi: 70 };
-  let stageMs = 0, auroraMs = 0, auroraCols = 0, auroraTier = 0, lineDrawn = 0;
+  let stageMs = 0, auroraMs = 0, auroraCols = 0, auroraTier = 0, lineDrawn = 0, headDrawn = false;
   // Line stars (sky spec 2; the rule is song/lineresults.js).
   //   counting  line index -> the counts of a line being sung right now
   //   stars     line index -> the best result of this visit (a star only ever goes up)
@@ -327,6 +334,11 @@ export function bootSingNow(root, given = {}) {
   //   end       the end panel: { sum, open, practice, best (new best), timer }
   const LS = SONG.lineStars;
   let counting = new Map(), stars = new Map(), run = null, end = null, hearUntil = null, loopNow = null;
+  // Grades (spec 2026-10-13-grades-and-results.md): runs = this visit's runs that sang, for
+  // the rest nudge (section 9), oldest first; layer = the open "Full results" dialog;
+  // resting = the one-minute rest pill { until, timer, done }.
+  const runs = [];
+  let layer = null, resting = null;
   let outNode = null, synth = null;
   const sky = { streaks: 0, micAtStreak: null, chimes: 0, lastChime: null };
   let lamp = { state: '', text: '', at: 0 }, raf = 0, dragging = false;
@@ -382,9 +394,12 @@ export function bootSingNow(root, given = {}) {
   const $live = h('div', { class: 'visually-hidden', 'aria-live': 'polite' });
   const $canvas = h('canvas', { class: 'sn-canvas', 'aria-hidden': 'true' });
   const $readWord = h('strong', null, ''), $readNum = h('span', null, '');
-  const $readout = h('div', { class: 'sn-readout', hidden: true }, $readWord, $readNum);
+  // By ear: a crescent moon stands where the verdict was (grades spec 10.2).
+  const $readMoon = h('span', { class: 'sn-readout-moon', hidden: true, 'aria-hidden': 'true' }, icon('moon', 20));
+  const $readout = h('div', { class: 'sn-readout', hidden: true }, $readMoon, $readWord, $readNum);
   const $countCap = h('span', { class: 'sn-count-cap' }, ''), $countNum = h('strong', { class: 'sn-count-num' }, ''), $countBeads = h('span', { class: 'sn-count-beads' });
-  const $count = h('div', { class: 'sn-count', 'aria-hidden': 'true' }, $countCap, $countNum, $countBeads);
+  const $countWays = h('span', { class: 'sn-count-ways' }, '');
+  const $count = h('div', { class: 'sn-count', 'aria-hidden': 'true' }, $countCap, $countNum, $countBeads, $countWays);
   // The end panel (line results), over the stage once a run has ended.
   const $end = h('section', { class: 'sn-end', role: 'region', 'aria-label': 'Line results', hidden: true });
   const $stagePic = h('div', { class: 'sn-stage-pic', role: 'img', 'aria-label': 'The singer’s tune scrolling past the now line, with your voice over it' }, $canvas);
@@ -407,6 +422,9 @@ export function bootSingNow(root, given = {}) {
   const $lineStars = h('div', { class: 'sn-line-stars', role: 'list', 'aria-label': 'Line stars' });
   const $scrub = h('div', { class: 'sn-scrub', role: 'slider', tabindex: '0', 'aria-label': 'Place in the song', 'aria-valuemin': '0' }, h('div', { class: 'sn-scrub-track' }, $blocks, $takeBar, $played), $head, $lineStars);
   const $loopWords = h('span', null, '');
+  const $restWords = h('span', null, '');
+  const $restSkip = h('button', { class: 'btn btn-quiet btn-small', type: 'button', id: 'sn-rest-skip', onclick: () => stopRest() }, 'Skip the rest');
+  const $rest = h('div', { class: 'sn-rest', hidden: true, role: 'status' }, icon('moon', 16), $restWords, $restSkip);
   const $loop = h('div', { class: 'sn-loop', hidden: true, role: 'status' }, icon('replay', 16), $loopWords,
     h('button', { class: 'btn btn-quiet btn-small', type: 'button', id: 'sn-loop-stop', onclick: () => { if (transport) transport.clearLoop(); } }, 'Stop repeating'));
 
@@ -445,6 +463,10 @@ export function bootSingNow(root, given = {}) {
   const $mixMarks = h('div', { class: 'sn-marks sn-mix-marks', role: 'group', 'aria-label': 'Quick settings for Music and Singer' }, MIX_ORDER.map((name) =>
     h('button', { class: 'btn btn-quiet btn-small', type: 'button', id: `sn-mix-${name}`, dataset: { mix: name }, onclick: () => setMixPreset(name) }, MIX_PRESET_WORDS[name])));
   const $octaveSlot = h('div', { class: 'sn-octave' }), $octaveWords = h('p', { class: 'reason' }, '');
+  // Ways to sing (grades spec 10.1): one quiet button beside Octave; the sheet has the sentences.
+  const $ways = btn('btn-quiet btn-small sn-ways-btn', 'sn-ways', 'Ways to sing (M)', () => openWays(), 'Ways to sing: Usual');
+  // Always one line of words under it, so locking it never moves the row.
+  const $waysWhy = h('p', { class: 'reason', id: 'sn-ways-why' }, '');
   const $wordsBtn = btn('btn-secondary', 'sn-words-btn', 'Words for this song', () => openWords(), 'Words…');
   const $auto = h('div', { class: 'sn-auto reason', hidden: true, 'aria-live': 'polite' });
   const $sound = h('div', { class: 'sn-sound' },
@@ -455,6 +477,7 @@ export function bootSingNow(root, given = {}) {
     h('label', { class: 'field sn-volume' }, h('span', { class: 'field-label' }, 'Volume'), $volumeWords, $volume),
     marks('sn-guide-marks', SONG.levels.guideMarks, 100),
     h('div', null, $octaveSlot, $octaveWords),
+    h('div', { class: 'sn-ways' }, $ways, $waysWhy),
     h('div', { class: 'sn-sound-end' }, $wordsBtn), $auto);
 
   // review (after a take)
@@ -496,7 +519,7 @@ export function bootSingNow(root, given = {}) {
   $sing.append(
     h('div', { class: 'title-row' }, btn('btn-quiet', 'sn-back', 'Back to My songs', () => closeSong(), icon('back', 16), ' My songs'), $title, $artist),
     $banners, $lamp, $live, $stage, $band, $hold,
-    h('div', { class: 'sn-scrub-row' }, $tNow, $scrub, $tEnd), $loop,
+    h('div', { class: 'sn-scrub-row' }, $tNow, $scrub, $tEnd), $loop, $rest,
     $transport, $primaryWhy, $tapRow, $sound, $review);
   micflow.mountBanners($banners);
 
@@ -598,19 +621,23 @@ export function bootSingNow(root, given = {}) {
   async function paintLibrary() {
     const got = await store.list({ sort: 'date' });
     const mine = got.groups.mine;
+    const bests = readBests(storage);
     const rows = [];
     for (const e of mine) {
       const kept = e.takes ? await store.takesOf(e.id) : [];
+      const top = bestAny(bests, e.id);
       rows.push(h('li', { class: 'sn-song card', dataset: { song: e.id } },
         h('div', { class: 'sn-song-main' },
           h('strong', { class: 'sn-song-title' }, e.title), e.artist && h('span', { class: 'sn-song-artist' }, e.artist),
-          h('span', { class: 'reason' }, [lengthWords(e.duration), rangeWords(e.range), e.hasWords ? 'has words' : null, e.hasBacking ? null : 'its sound is missing: drop the file again'].filter(Boolean).join(' · '))),
+          h('span', { class: 'reason' }, [lengthWords(e.duration), rangeWords(e.range), e.hasWords ? 'has words' : null, e.hasBacking ? null : 'its sound is missing: drop the file again'].filter(Boolean).join(' · ')),
+          songBadge(bests, e.id)),
         h('div', { class: 'action-row' },
           h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'sing' }, disabled: !e.hasBacking, onclick: () => openSong(e.id) }, 'Sing'),
           h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'rename' }, onclick: () => renameSong(e) }, 'Rename'),
           h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'remove' }, onclick: () => removeSong(e) }, 'Remove')),
         kept.length ? h('ul', { class: 'sn-takes', 'aria-label': `Takes of ${e.title}` }, kept.map((t) => h('li', { class: 'sn-take', dataset: { take: t.id } },
-          h('span', null, `Take · ${dateWords(t.createdAt)} · ${lengthWords(t.seconds)}${t.finished === false ? ' · cut short' : ''}`),
+          h('span', null, [`Take · ${dateWords(t.createdAt)} · ${lengthWords(t.seconds)}${t.finished === false ? ' · cut short' : ''}`, ...takeRowWords(t)].join(' · ')),
+          top && top.result.takeId === t.id ? h('span', { class: 'sn-chip', dataset: { tone: top.result.silver ? 'silver' : 'gold', chip: 'best' } }, 'Best') : null,
           h('button', { class: 'btn btn-secondary btn-small', type: 'button', dataset: { act: 'play-take' }, onclick: () => openSong(e.id, { takeId: t.id }) }, icon('play', 16), ' Play'),
           h('button', { class: 'btn btn-quiet btn-small', type: 'button', dataset: { act: 'delete-take' }, onclick: () => deleteTake(t) }, 'Delete')))) : null));
     }
@@ -618,6 +645,35 @@ export function bootSingNow(root, given = {}) {
     $empty.hidden = mine.length > 0;
     $empty.textContent = got.unavailable ? 'This browser’s storage cannot be opened (a private window?), so songs cannot be kept here.' : 'No songs yet. Drop one above: your own file, any length up to 12 minutes.';
     $drop.classList.toggle('is-small', mine.length > 0);
+  }
+
+  // My songs (grades spec 6.3): the song's best as a small medallion and its words; nothing
+  // at all before the first letter (no empty ring). A second way's best on a quiet line.
+  const MOD_WORDS = Object.freeze({ plain: 'With the pitch line', noLine: 'By ear', noGuide: 'No guide voice' });
+  function songBadge(bests, songId) {
+    const top = bestAny(bests, songId);
+    if (!top || !top.result || !Number.isFinite(top.result.accuracy) || (!top.result.letter && top.result.state !== 'finding')) return null;
+    const r = top.result, byEar = !!(r.mods && r.mods.noLine), said = letterWords(r);
+    const badge = h('div', { class: 'sn-song-best', dataset: { state: r.state || 'graded' } });
+    const words = r.letter ? `Best${byEar ? ' by ear' : ''}: ${said}` : said;
+    // One label for the whole badge (review J8); the small medallion inside is not read again.
+    badge.setAttribute('role', 'group');
+    badge.setAttribute('aria-label', r.letter ? `Best for this song: ${r.letter}, ${wholePercent(r.accuracy)} percent${byEar ? ', by ear' : ''}.` : 'Best for this song: finding it.');
+    mountMedallion(badge, medallionModel(r), { size: 40, calm: true });
+    const mg = badge.querySelector('.mg');
+    if (mg) { mg.removeAttribute('role'); mg.removeAttribute('aria-label'); mg.setAttribute('aria-hidden', 'true'); }
+    badge.append(h('span', { class: r.letter ? 'sn-song-best-words' : 'sn-song-best-words reason' }, words));
+    const others = Object.entries((bests && bests.songs && bests.songs[songId]) || {}).filter(([k, v]) => k !== top.key && v && v.letter);
+    if (others.length) {
+      const say = others.slice(0, 2).map(([k, v]) => `${k.split('+').map((m) => MOD_WORDS[m] || m).join(', ')}: ${letterWords(v)}`);
+      badge.append(h('span', { class: 'reason sn-song-best-more' }, say.join(' · ') + (others.length > 2 ? ` and ${others.length - 2} more` : '')));
+    }
+    return badge;
+  }
+  // A take row's letter: "A · 78 %", "Finding it", "part of the song · 71 %", and its ways.
+  function takeRowWords(t) {
+    const w = takeWords(t && t.lines && t.lines.grade);
+    return [w.words, ...w.chips.map((c) => c.toLowerCase())].filter(Boolean);
   }
 
   function renameSong(e) {
@@ -810,7 +866,10 @@ export function bootSingNow(root, given = {}) {
         closeEnd({ focus: false });
         // A take is one run. Practice is one run from end panel to end panel, pauses included.
         const take = recActive(), judged = (singing || take) && mode === 'sing';
-        if (!judged) run = null; else if (!run || take || run.take) run = { results: new Map(), take, lastT: -Infinity };
+        if (!judged) run = null;
+        else if (!run || take || run.take) run = { results: new Map(), take, lastT: -Infinity, frames: [], at: Date.now(), line: loopNow ? lineIndexAt(lines, loopNow.start + 0.01) : null };
+        // By ear the row is empty for the whole run, earlier runs' stars too (spec 10.2).
+        if (byEarRun()) paintStars();
         paint();
       });
       // A jump is the owner's own press: the prompt follows it at once (paintLamp).
@@ -837,7 +896,7 @@ export function bootSingNow(root, given = {}) {
       levels = mixFor(id);
       player.setVolume(levels.volume);
       player.setBackingGain(levels.music);
-      if (hasGuide) player.setLayer('guide', { samples: audio.vocal.samples, sampleRate: audio.vocal.sampleRate, at: 0, gain: levels.singer });
+      if (hasGuide) player.setLayer('guide', { samples: audio.vocal.samples, sampleRate: audio.vocal.sampleRate, at: 0, gain: guideHeard() });
       // The height the count-in beads sit at: each phrase's first sung note.
       phraseMidi = phrases.map((p) => { if (!curve) return null; for (let i = firstAtOrAfter(curve.t, p.t); i < curve.t.length && curve.t[i] <= p.end; i++) if (curve.voiced[i]) return curve.midi[i]; return null; });
       recorder = createRecorder({ micflow, player, songId: id, store: takes, title: entry.title });
@@ -967,6 +1026,8 @@ export function bootSingNow(root, given = {}) {
     trail.push({ t, midi, kind: midi === null ? null : kindOf(cents), lv: lvNow ?? undefined, hue: midi === null ? 0 : clamp((midi - lane.lo) / (lane.hi - lane.lo), 0, 1) });
     while (trail.length && trail[0].t < t - VIEW.trailSec) trail.shift();
     lastRead = midi === null ? null : { midi, cents, at: performance.now() };
+    // A practice run is scored from these when it ends (a take from its own saved frames).
+    if (run && !run.take) run.frames.push({ t, midi, clarity: frame.clarity, voiced: !!frame.voiced });
     countReading(t, midi);
   });
 
@@ -992,7 +1053,8 @@ export function bootSingNow(root, given = {}) {
     if (run) run.results.set(k, better(run.results.get(k), r));
     const had = stars.get(k), kept = better(had, r);
     stars.set(k, kept);
-    if (LEVEL_RANK[r.level] >= LEVEL_RANK.close) { if (!review) { putStar(kept); popStar(r); } }
+    // By ear the landing star and the row's new stars wait for the end (spec 10.2).
+    if (LEVEL_RANK[r.level] >= LEVEL_RANK.close) { if (!review && !byEarRun()) { putStar(kept); popStar(r); } }
   }
   // A jump, a pause, the end of the song: a line heard to its end is settled, one left in
   // the middle is not (sky spec 2.1).
@@ -1006,6 +1068,7 @@ export function bootSingNow(root, given = {}) {
   // already there is never redrawn, so nothing blinks while a line is being sung.
   const starEls = new Map();
   let trackPx = 0, starSource = 'words';
+  const byEarRun = () => byEarNow() && !!run;
   function putStar(r) {
     if (!(LEVEL_RANK[r.level] >= LEVEL_RANK.close)) return;
     const d = duration() || 1, small = trackPx > 0 && lines.length > 0 && trackPx / lines.length < LS.crowdPx;
@@ -1025,6 +1088,7 @@ export function bootSingNow(root, given = {}) {
     starEls.clear();
     const sum = review ? review.lines : null;
     starSource = sum ? sum.source : lineSource();
+    if (!sum && byEarRun()) return;      // a run by ear: the row is empty until it ends
     for (const r of sum ? sum.results : stars.values()) putStar(r);
   }
   // The scrub bar's width is read here (a resize, a new song), never while a line settles.
@@ -1053,33 +1117,169 @@ export function bootSingNow(root, given = {}) {
         h('strong', null, `${source === 'words' ? 'Line' : 'Phrase'} ${r.i + 1} · ${clock(r.t)}`)),
       h('p', { class: `sn-end-words reason${extra.say ? ' is-say' : ''}` }, extra.say || wordsOf(r, source)), extra.button || null);
   }
+  // ---- the letter (grades spec 3, 4, 6). Scored once when a run ends, from that run's own
+  // pitch frames: a take from its saved frames (the same call an older take gets when it is
+  // opened later, so its letter never changes), practice from the frames heard live.
+  const REVEAL = Object.freeze({ strikeMs: 1400, fillFromMs: 250, fillMs: 1150 });   // spec 4.3 (css/grades.css has the same three)
+  const takeFramesOf = (take) => (!take || take.songStart === null || take.songStart === undefined ? [] : alignFrames(take.frames || [], take, { nudgeMs: take.nudgeMs || 0 }));
+  // ---- ways to sing (spec 10). Kept per song in prefs.ways; a take remembers the ones it was
+  // sung with (grade.mods). "No guide voice" is only a way when the song has a singer to take
+  // out. "Slower" and "Lower key" are parked (no speed or pitch control in player.js yet).
+  const WAYS = Object.freeze([
+    Object.freeze({ id: 'noLine', name: 'By ear', line: 'Your pitch line and the In tune words are hidden while you sing. You see them when the take ends.', letter: 'silver' }),
+    Object.freeze({ id: 'noGuide', name: 'No guide voice', line: 'The singer’s voice is taken out. You sing with the band alone.', letter: 'counts in full' }),
+  ]);
+  const WAYS_BUILT = Object.freeze({ noLine: true });
+  const WAYS_LOCKED = 'You can change this when the song is stopped.';
+  const waysOn = () => {
+    const w = song ? prefs.ways[song.id] : null;
+    const on = {};
+    if (w && w.noLine === true) on.noLine = true;
+    if (w && w.noGuide === true && hasGuide) on.noGuide = true;
+    return on;
+  };
+  // While anything listens or plays, the way of singing cannot change under the run.
+  const waysLocked = () => playing() || !!count || recActive() || micStarting;
+  // The live picture hides the pitch: Sing mode, by ear, never in the review (spec 10.2).
+  const byEarNow = () => mode === 'sing' && !review && !!waysOn().noLine;
+  const waysWords = () => { const on = waysOn(); return WAYS.filter((w) => on[w.id]).map((w) => w.name); };
+  function setWay(id, value) {
+    if (!song || waysLocked()) return;
+    const next = { ...(prefs.ways[song.id] || {}) };
+    if (value) next[id] = true; else delete next[id];
+    if (Object.keys(next).length) prefs.ways[song.id] = next; else delete prefs.ways[song.id];
+    savePrefs();
+    // A practice run is one way of singing: a change starts a new one (its letter is not mixed).
+    if (run && !run.take) run = null;
+    trail = [];
+    setLevels({});      // the guide layer follows "No guide voice"
+    paintStars();
+  }
+  function openWays() {
+    if (!song || mode !== 'sing' || waysLocked()) return;
+    const on = waysOn();
+    const rows = WAYS.map((w) => {
+      const cant = w.id === 'noGuide' && !hasGuide;
+      const row = switchRow({ label: w.name, note: `${w.line} ${cant ? 'This song has no separate singer’s voice.' : `Your letter: ${w.letter}.`}`, value: !!on[w.id], onChange: (v) => setWay(w.id, v) });
+      row.dataset.way = w.id;
+      const sw = row.querySelector('.switch');
+      if (sw) sw.disabled = cant || waysLocked();
+      return row;
+    });
+    // Done or Esc gives the focus back to the button that opens the sheet, however it was
+    // opened (key M left it on Sing; review J9). openSheet's own return runs first.
+    const sheet = openSheet({ title: 'Ways to sing', className: 'sheet-ways', onClose: () => { if ($ways.isConnected && !$ways.disabled) $ways.focus({ preventScroll: true }); }, body: [
+      h('p', { class: 'reason' }, 'Changes apply at once and are remembered for this song.'),
+      ...rows,
+      h('div', { class: 'sheet-actions' }, h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'ways-done' }, onclick: () => sheet.close() }, 'Done')),
+    ] });
+  }
+  function scoreRun({ frames, sum, take = null, practice = false, fresh = true, mods = null }) {
+    const bests = readBests(storage);
+    let rest = false;
+    if (fresh) {
+      runs.push({ songId: song.id, line: run && Number.isInteger(run.line) && run.line >= 0 ? run.line : null, at: (run && run.at) || Date.now(), endAt: Date.now() });
+      if (runs.length > 60) runs.splice(0, runs.length - 60);
+      rest = retryNudge(runs);
+    }
+    const scored = takeResults({
+      frames, targetAt, lines, saved: sum, mods: mods || (fresh ? waysOn() : {}), at: Date.now(), takeId: take ? take.id : null,
+      practice, rest, ways: WAYS_BUILT, bests, songId: song.id,
+    });
+    // Bests are kept per song and way of singing; never for practice or an older take.
+    if (fresh && !practice) { const up = updateBests(bests, song.id, scored.result); if (up.isBest) saveBests(storage, up.bests); }
+    return scored;
+  }
+  // An older take opened from My songs: scored the same way, and the result saved with it
+  // the first time (in its `lines`, beside the line results).
+  function scoreOld(take) {
+    if (!take || !review || !review.lines) return null;
+    const had = take.lines && take.lines.grade;
+    const scored = scoreRun({ frames: takeFramesOf(take), sum: review.lines, take, fresh: false, mods: had ? had.mods || {} : {} });
+    if (!had && review.frames.length) { take.lines = { ...review.lines, grade: scored.result }; review.lines = take.lines; takes.update(take.id, { lines: take.lines }); }
+    return scored;
+  }
+  const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 899px)').matches;
+  const kbd = (k) => h('kbd', { class: 'keycap' }, k);
   function paintEnd() {
     if (!end) { $end.hidden = true; return; }
     const sum = end.sum, head = headingWords(sum), byI = new Map(sum.results.map((r) => [r.i, r]));
     const best = sum.best === null ? null : byI.get(sum.best), prac = sum.practise === null ? null : byI.get(sum.practise);
-    const $head = h('h2', { class: 'sn-end-head', id: 'sn-end-head', tabindex: '-1' }, head.text);
+    const sc = end.scored, running = end.reveal === 'run';
+    const rest = !!sc && sc.advice.id === 'rest';
+    // The coach's one line comes first in reading order; focus still lands on the heading,
+    // which points back at it (spec 4.1).
+    const $advice = sc ? h('p', { class: 'sn-end-advice', id: 'sn-end-advice', dataset: { id: sc.advice.id } }, icon(sc.advice.icon || 'wave', 20),
+      h('span', null, h('strong', null, sc.advice.said), ` Next go: ${sc.advice.next}`)) : null;
+    // Part of the song with too few lines for line stars: say what was sung, never "Too short
+    // for line stars" beside "Part of the song" (review J2, spec 20).
+    const $head = h('h2', { class: 'sn-end-head', id: 'sn-end-head', tabindex: '-1', 'aria-describedby': sc ? 'sn-end-advice' : null },
+      sc && sc.grade.state === 'sangTooLittle' && !head.cards ? `You sang ${sum.sung} of ${sum.total} lines.` : head.text);
     const cards = [];
+    const pi = prac ? lineOf(prac) : -1;
     if (head.cards && best) cards.push(lineCard('Your best line', best, sum.source, {
       button: review && lineOf(best) >= 0 ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-hear', onclick: () => hearLine(lineOf(best)) }, 'Hear it') : null }));
     if (head.cards && prac) cards.push(lineCard('A line to practise', prac, sum.source, { say: reasonWords(prac),
-      button: lineOf(prac) >= 0 ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-practise', onclick: () => practiseLine(lineOf(prac)) }, 'Practise this line') : null }));
+      button: pi >= 0 ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-practise', onclick: () => retryLine(pi) }, 'Retry this line', ' ', kbd('L')) : null }));
     else if (head.cards && best) cards.push(h('div', { class: 'sn-end-card' }, h('h3', null, 'A line to practise'), h('p', null, 'No line to practise. That was a clean run.')));
-    $end.replaceChildren(
-      h('div', { class: 'sn-end-main' }, $head, end.best ? h('p', { class: 'sn-end-best' }, starSvg('held', 14), ' New best for this song') : null),
+    // One "new best" chip: the letter's when there is one, else the line count's (spec 6.1).
+    const chip = sc && sc.best.chip ? sc.best.chip : end.best ? { id: 'new', text: 'New best for this song', tone: 'gold' } : null;
+    const next = sc && sc.best.next && sc.best.next.panel ? sc.best.next.text : '';
+    const $grade = sc ? h('div', { class: 'sn-grade' }) : null;
+    if ($grade) mountMedallion($grade, sc.medallion, { size: narrow() ? 72 : 96, reveal: running, calm: shell.calm() });
+    end.medalPx = narrow() ? 72 : 96;
+    $end.replaceChildren(...[
+      $advice, $grade,
+      h('div', { class: 'sn-end-main' }, $head,
+        // The chip's and the best line's boxes are there from the first frame (no jump).
+        h('p', { class: 'sn-end-chip-line' }, chip ? h('span', { class: chip.id === 'new' ? 'sn-end-best' : 'sn-chip', dataset: { tone: chip.tone || 'plain', chip: chip.id } }, chip.id === 'new' ? starSvg('held', 14) : null, chip.id === 'new' ? ` ${chip.text}` : chip.text) : null),
+        sc ? h('p', { class: 'sn-best-line' }, sc.best.words, next ? h('span', { class: 'sn-best-next' }, `${sc.best.words ? ' ' : ''}${next}`) : null) : null),
       ...cards,
       h('div', { class: 'sn-end-actions action-row' },
-        end.practice ? h('button', { class: 'btn btn-primary btn-small', type: 'button', id: 'sn-end-again', onclick: () => { closeEnd({ focus: false }); jump((o) => transport.restart(o)).then(() => sing()); } }, 'Sing it again') : null,
-        end.practice ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-record', onclick: () => { closeEnd({ focus: false }); jump((o) => transport.restart(o)).then(() => record()); } }, 'Record a take') : null,
-        h('button', { class: 'btn btn-quiet btn-small', type: 'button', id: 'sn-end-close', onclick: () => closeEnd() }, 'Close')));
+        rest ? h('button', { class: 'btn btn-primary btn-small', type: 'button', id: 'sn-end-rest', onclick: () => startRest() }, 'Rest for a minute') : null,
+        end.practice ? h('button', { class: `btn ${rest ? 'btn-secondary' : 'btn-primary'} btn-small`, type: 'button', id: 'sn-end-again', onclick: () => { closeEnd({ focus: false }); jump((o) => transport.restart(o)).then(() => sing()); } }, 'Sing it again') : null,
+        end.practice ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-record', onclick: () => retrySong() }, 'Record a take', ' ', kbd('R'))
+          : h('button', { class: `btn ${rest ? 'btn-secondary' : 'btn-primary'} btn-small`, type: 'button', id: 'sn-end-retry', onclick: () => retrySong() }, 'Retry song', ' ', kbd('R')),
+        sc ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-full', onclick: () => openLayer() }, 'Full results', ' ', kbd('F')) : null,
+        h('button', { class: 'btn btn-quiet btn-small', type: 'button', id: 'sn-end-close', onclick: () => closeEnd() }, 'Close')),
+    ].filter(Boolean));
+    $end.classList.toggle('has-grade', !!sc);
+    $end.setAttribute('aria-label', sc ? 'Results' : 'Line results');
     $end.hidden = !end.open;
     $end.dataset.calm = shell.calm() ? 'on' : 'off';
+    $end.dataset.reveal = running ? 'run' : 'done';
+    $end.dataset.band = sc && sc.medallion.band ? 'on' : 'off';
+    if (running && sc && !shell.calm()) countUp($end.querySelector('.mg-percent'), sc.medallion.percent);
+  }
+  // The panel's medallion follows the window across 900 px after it was mounted (72 / 96;
+  // review J12). Remounted in its final state; during the reveal finishReveal does it.
+  function fitMedal() {
+    const $grade = end && end.open && end.scored && end.reveal === 'done' ? $end.querySelector('.sn-grade') : null;
+    const px = narrow() ? 72 : 96;
+    if (!$grade || end.medalPx === px) return;
+    mountMedallion($grade, end.scored.medallion, { size: px, reveal: false, calm: true });
+    end.medalPx = px;
+  }
+  if (typeof matchMedia === 'function') {
+    const mq = matchMedia('(max-width: 899px)');
+    if (mq.addEventListener) mq.addEventListener('change', fitMedal);
+  }
+  // The percent counts up with the ring (spec 4.3): its text only, once a frame.
+  function countUp(el, to) {
+    if (!el || !Number.isFinite(to)) return;
+    const t0 = performance.now();
+    el.textContent = '0 %';
+    const step = () => {
+      if (!end || end.reveal !== 'run' || !el.isConnected) { el.textContent = `${to} %`; return; }
+      const k = clamp((performance.now() - t0 - REVEAL.fillFromMs) / REVEAL.fillMs, 0, 1), eased = 1 - (1 - k) ** 3;
+      el.textContent = `${Math.floor(to * eased)} %`;
+      if (k < 1) requestAnimationFrame(step); else el.textContent = `${to} %`;
+    };
+    requestAnimationFrame(step);
   }
   function openEnd() {
-    if (!end && review && review.lines) end = { sum: review.lines, open: false, practice: false, best: false, timer: 0 };
+    if (!end && review && review.lines) end = { sum: review.lines, open: false, practice: false, best: false, timer: 0, scored: scoreOld(review.take), reveal: 'done', shower: false };
     if (!end) return;
-    clearTimeout(end.timer);
-    end.timer = 0;
-    for (const el of document.querySelectorAll('.sn-streak')) el.remove();
     const was = end.open;
     end.open = true;
     paintEnd();
@@ -1088,6 +1288,7 @@ export function bootSingNow(root, given = {}) {
   }
   function closeEnd({ focus = true } = {}) {
     if (!end) return;
+    if (end.reveal === 'run') finishReveal({ chime: false });
     clearTimeout(end.timer);
     end.timer = 0;
     const was = end.open;
@@ -1095,29 +1296,51 @@ export function bootSingNow(root, given = {}) {
     $end.hidden = true;
     if (was && focus) $primary.focus({ preventScroll: true });
   }
-  // The results of a run that has just ended. `celebrate`: the run ended in a way that may
-  // have its shooting star (never a window that was left, never a lost microphone).
-  function showEnd(sum, { practice = false, best = false, celebrate = false } = {}) {
+  // The results of a run that has just ended (spec 4.3). The panel opens AT ONCE. When the
+  // run may celebrate (ended by Stop, the end or the time limit; microphone released; page
+  // seen; no sheet) a shooting star flies to the medallion while its ring fills, and the
+  // letter lands with the chime at 1.4 s. Calm motion: the final state, and the chime.
+  function showEnd(sum, { practice = false, best = false, celebrate = false, scored = null } = {}) {
     if (end) clearTimeout(end.timer);
-    end = { sum, open: false, practice, best, timer: 0 };
+    // A new best with a letter, or by lines with the singer, fires the shower once (6.1).
+    const shower = best || !!(scored && scored.best.shower);
+    end = { sum, open: false, practice, best, timer: 0, scored, reveal: 'done', shower };
+    const may = celebrate && micflow.state().phase !== 'on' && !document.hidden && !sheetOpen();
+    if (!may || shell.calm() || !scored) { openEnd(); if (may) endChime(); return; }
+    end.reveal = 'run';
+    openEnd();
+    // Star one goes to the medallion; a new best sends two more to the last two "with" stars.
     const withStars = sum.results.filter((r) => r.level === 'with');
-    const may = celebrate && micflow.state().phase !== 'on' && !document.hidden && !sheetOpen() && withStars.length > 0;
-    if (!may || shell.calm()) { if (may) endChime(best); openEnd(); return; }
-    // Calm motion is off and nothing is being judged: the star flies, and the panel opens
-    // as it lands. Any key or press goes straight to the panel (the key handler, below).
-    const count = best ? Math.min(LS.shower, withStars.length) : 1;
-    const targets = withStars.slice(-count);
-    targets.forEach((r, k) => setTimeout(() => { if (end && end.sum === sum && !end.open) shootStar(starEls.get(r.i), k, count); }, k * LS.showerGapMs));
-    // The chime is for an owner who is looking at the stage: not when Settings or Words was
-    // opened, or the window left, while the star was on its way (bugs.md 74).
-    end.timer = setTimeout(() => { if (!document.hidden && !sheetOpen()) endChime(best); openEnd(); swellStars(); }, LS.streakMs);
+    const more = shower ? withStars.slice(Math.max(0, withStars.length - (LS.shower - 1))) : [];
+    const targets = [() => $end.querySelector('.mg-face'), ...more.map((r) => () => starEls.get(r.i))];
+    targets.forEach((get, k) => setTimeout(() => { if (end && end.sum === sum && end.reveal === 'run') shootStar(get(), k, targets.length, REVEAL.strikeMs - k * LS.showerGapMs); }, k * LS.showerGapMs));
+    end.timer = setTimeout(() => finishReveal({ chime: !document.hidden && !sheetOpen() }), REVEAL.strikeMs);
+  }
+  // The strike, or any key or press during the reveal: the final state at once, and the
+  // chime once.
+  function finishReveal({ chime = true } = {}) {
+    if (!end || end.reveal !== 'run') return;
+    clearTimeout(end.timer);
+    end.timer = 0;
+    end.reveal = 'done';
+    for (const el of document.querySelectorAll('.sn-streak')) el.remove();
+    $end.dataset.reveal = 'done';
+    const mg = $end.querySelector('.mg');
+    if (mg) mg.dataset.reveal = 'done';
+    const pc = $end.querySelector('.mg-percent');
+    if (pc && end.scored && end.scored.medallion.percentText) pc.textContent = end.scored.medallion.percentText;
+    if (chime) endChime();
+    fitMedal();
+    swellStars();
     paint();
   }
-  function shootStar(to, k, count) {
+  function shootStar(to, k, count, ms = LS.streakMs) {
     if (micflow.state().phase === 'on' || !to || !document.body.animate) return;
     const stage = $stage.getBoundingClientRect(), star = to.getBoundingClientRect();
-    // From the stage's upper left; a shower starts from places along its top edge.
-    const x0 = stage.left + stage.width * (0.08 + (count > 1 ? k * 0.22 : 0)), y0 = stage.top + stage.height * 0.12;
+    // Star one starts a third of the way along the stage's top, so it crosses to the medallion
+    // (under 8 %) at an angle instead of dropping straight onto it (spec 20); a shower's
+    // others start from places along the top edge.
+    const x0 = stage.left + stage.width * (k === 0 ? 0.34 : 0.08 + k * 0.22), y0 = stage.top + stage.height * 0.12;
     const x1 = star.left + star.width / 2, y1 = star.top + star.height / 2;
     const angle = Math.atan2(y1 - y0, x1 - x0), len = Math.min(LS.streakLenPx, Math.hypot(x1 - x0, y1 - y0) * 0.6);
     const el = h('div', { class: 'sn-streak', 'aria-hidden': 'true', style: `width:${len.toFixed(0)}px` }, h('i', null));
@@ -1125,11 +1348,11 @@ export function bootSingNow(root, given = {}) {
     sky.streaks++;
     sky.micAtStreak = micflow.state().phase;
     const at = (x, y) => `translate(${(x - len).toFixed(1)}px, ${(y - 1).toFixed(1)}px) rotate(${angle.toFixed(4)}rad)`;
-    const total = LS.streakMs + LS.tailMs;
+    const fly = Math.max(LS.streakInMs + 1, ms), total = fly + LS.tailMs;
     el.animate([
       { transform: at(x0, y0), opacity: 0, offset: 0 },
       { opacity: 1, offset: LS.streakInMs / total },
-      { transform: at(x1, y1), opacity: 1, offset: LS.streakMs / total, easing: 'linear' },
+      { transform: at(x1, y1), opacity: 1, offset: fly / total, easing: 'linear' },
       { transform: at(x1, y1), opacity: 0, offset: 1 },
     ], { duration: total, easing: 'cubic-bezier(.45, 0, .25, 1)', fill: 'both' }).finished.then(() => el.remove(), () => el.remove());
   }
@@ -1138,13 +1361,14 @@ export function bootSingNow(root, given = {}) {
     const step = Math.min(LS.swellStepMs, LS.swellSpanMs / Math.max(1, els.length));
     els.forEach((el, k) => { if (el.animate) el.animate([{ transform: 'translate(-50%, -50%) scale(1)' }, { transform: 'translate(-50%, -50%) scale(1.35)' }, { transform: 'translate(-50%, -50%) scale(1)' }], { duration: LS.swellMs, delay: k * step, easing: 'cubic-bezier(.2, .8, .2, 1)' }); });
   }
-  // One chime as the star lands: the root and the fifth on the singer's last note. Through
-  // the page's own way out (the lab's silent seam mutes it), never while the song plays or
-  // the microphone is judged, and only with "Reward sounds" on and headphones confirmed.
-  function endChime(best) {
+  // One chime as the letter lands, on the last sung note, growing with the letter (spec
+  // 4.4). Through the page's own way out (the lab's silent seam mutes it), never while the
+  // song plays or the microphone is judged, and only with "Reward sounds" on and headphones
+  // confirmed.
+  function endChime() {
     if (!ctx || !outNode || playing() || !canChime({ enabled: settings.get('rewardSounds'), headphones: shell.headphones(), scoring: micflow.state().phase === 'on' })) return;
     if (!synth) synth = createSynth({ audioContext: ctx, destination: outNode });
-    const plan = endChimePlan(lastSungMidi(), { best });
+    const plan = endChimePlan(lastSungMidi(), { best: !!(end && end.shower), grade: end && end.scored ? end.scored.grade : null });
     playChime(synth, plan, CONFIG.rewards.chimeGainFrac * levels.volume);
     sky.chimes++;
     sky.lastChime = plan.map((n) => n.midi);
@@ -1152,8 +1376,90 @@ export function bootSingNow(root, given = {}) {
   function endOfPractice() {
     if (!run || run.take) return;
     const sum = summarise([...run.results.values()], { total: lines.length, source: lineSource() });
+    const scored = scoreRun({ frames: run.frames, sum, practice: true });
     run = null;
-    showEnd(sum, { practice: true, celebrate: true });
+    paintStars();      // by ear, the run's stars come in now, with the panel
+    showEnd(sum, { practice: true, celebrate: true, scored });
+  }
+
+  // ---- retry (spec 6.2): R records the song again from the top, L sings the line to
+  // practise on repeat; both start the count at once. A take not kept or discarded is kept.
+  async function retrySong() {
+    if (!transport || recActive() || count || micStarting) return;
+    closeLayer({ focus: false });
+    closeEnd({ focus: false });
+    if (review) leaveReview();
+    await jump((o) => transport.restart(o));
+    record();
+  }
+  async function retryLine(i) {
+    if (!transport || !lines[i] || recActive() || count || micStarting) return;
+    closeLayer({ focus: false });
+    await practiseLine(i);
+    sing();
+  }
+  const practiseIndex = () => { if (!end || end.sum.practise === null) return -1; const r = end.sum.results.find((x) => x.i === end.sum.practise); return r ? lineOf(r) : -1; };
+
+  // ---- the full results layer (spec 5; js/app/song/resultsview.js draws it)
+  async function openLayer() {
+    if (!end) openEnd();
+    if (!end || !end.scored || layer) return;
+    if (playing()) player.pause('stop');
+    const bests = readBests(storage), top = bestAny(bests, song.id);
+    const mine = await store.takesOf(song.id).catch(() => []);
+    if (!end || layer) return;
+    const pi = practiseIndex();
+    // The bottom row's two line cards (spec 5.1), the panel's own cards with the layer's ids.
+    const sum = end.sum, head = headingWords(sum), byI = new Map(sum.results.map((r) => [r.i, r]));
+    const bestR = sum.best === null ? null : byI.get(sum.best), pracR = sum.practise === null ? null : byI.get(sum.practise);
+    const lineCards = [];
+    if (head.cards && bestR) lineCards.push(lineCard('Your best line', bestR, sum.source, {
+      button: review && lineOf(bestR) >= 0 ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-results-hear', onclick: () => { closeLayer({ focus: false }); hearLine(lineOf(bestR)); } }, 'Hear it') : null }));
+    if (head.cards && pracR) lineCards.push(lineCard('A line to practise', pracR, sum.source, { say: reasonWords(pracR),
+      button: pi >= 0 ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-results-practise', onclick: () => retryLine(pi) }, 'Retry this line', ' ', kbd('L')) : null }));
+    else if (head.cards && bestR) lineCards.push(h('div', { class: 'sn-end-card' }, h('h3', null, 'A line to practise'), h('p', null, 'No line to practise. That was a clean run.')));
+    layer = resultsView({
+      lineCards,
+      title: song.title, when: review ? dateWords(review.take.createdAt) : '', scored: end.scored, practice: end.practice,
+      keep: end.practice || !review ? null : review.fresh ? 'ask' : 'kept',
+      retryLine: pi >= 0 ? { index: pi, label: `Retry ${lineSource() === 'words' ? 'line' : 'phrase'} ${pi + 1}` } : null,
+      takes: (Array.isArray(mine) ? mine : []).map((t) => { const w = takeWords(t.lines && t.lines.grade); return { id: t.id, when: dateWords(t.createdAt), words: w.words, chips: w.chips, best: !!(top && top.result.takeId && top.result.takeId === t.id), current: !!review && review.take.id === t.id, gone: false }; }),
+      calm: shell.calm(),
+    }, {
+      close: () => closeLayer(), retrySong: () => retrySong(), retryLine: () => { if (pi >= 0) retryLine(pi); },
+      keep: async () => { await keepTake(); closeLayer({ focus: false }); openLayer(); },
+      discard: async () => { closeLayer({ focus: false }); await discardTake(); },
+      playTake: (id) => { closeLayer({ focus: false }); openSong(song.id, { takeId: id }); },
+    });
+    root.append(layer);
+    const $h = layer.querySelector('.sn-results-head');
+    if ($h) $h.focus({ preventScroll: true });
+  }
+  function closeLayer({ focus = true } = {}) {
+    if (!layer) return;
+    layer.remove();
+    layer = null;
+    const back = $end.querySelector('#sn-end-full');
+    if (focus && back && !$end.hidden) back.focus({ preventScroll: true });
+  }
+
+  // ---- the rest (spec 9): a quiet pill beside the scrub row, its number once a second.
+  function startRest() {
+    closeLayer({ focus: false });
+    stopRest();
+    resting = { until: Date.now() + 60000, timer: setInterval(paintRest, 1000), done: 0 };
+    paintRest();
+  }
+  function stopRest() { if (resting) { clearInterval(resting.timer); clearTimeout(resting.done); } resting = null; $rest.hidden = true; }
+  function paintRest() {
+    if (!resting) { $rest.hidden = true; return; }
+    const left = Math.max(0, Math.ceil((resting.until - Date.now()) / 1000));
+    $rest.hidden = false;
+    if (left > 0) { $restWords.textContent = `Resting · ${clock(left)}`; $restSkip.hidden = false; return; }
+    clearInterval(resting.timer);
+    $restWords.textContent = 'Rested. Ready when you are.';
+    $restSkip.hidden = true;
+    if (!resting.done) resting.done = setTimeout(stopRest, 4000);
   }
   // "Hear it": the take's own line, from its first moment to its end (frame() stops it).
   async function hearLine(i) {
@@ -1163,8 +1469,8 @@ export function bootSingNow(root, given = {}) {
     transport.play();
     hearUntil = lines[i].end;
   }
-  // "Practise this line": the take is kept, the line is put on repeat, and nothing starts
-  // until the owner presses Sing.
+  // The line to practise: the take is kept and the line is put on repeat. "Retry this line"
+  // (retryLine, key L) then starts the count at once (grades spec 6.2).
   async function practiseLine(i) {
     if (!transport || !lines[i]) return;
     closeEnd({ focus: false });
@@ -1290,10 +1596,12 @@ export function bootSingNow(root, given = {}) {
     if (song) { keepSongMix(prefs.mixes, song.id, levels); savePrefsSoon(); }
     if (player) {
       player.setVolume(levels.volume);
-      if (!review) { player.setBackingGain(levels.music); if (hasGuide) player.setLayerGain('guide', levels.singer); }
+      if (!review) { player.setBackingGain(levels.music); if (hasGuide) player.setLayerGain('guide', guideHeard()); }
     }
     paint();
   }
+  // "No guide voice" takes the singer out without moving the Singer level kept for the song.
+  function guideHeard() { return waysOn().noGuide ? 0 : levels.singer; }
   const setMusic = (v) => setLevels({ music: clamp(Number(v) || 0, 0, 1) });
   const setGuide = (v) => setLevels({ singer: clamp(Number(v) || 0, 0, 1) });
   const setVolume = (v) => setLevels({ volume: clamp(Number(v) || 0, 0, 1) });
@@ -1333,13 +1641,16 @@ export function bootSingNow(root, given = {}) {
     // takes no star away).
     closeOpenLines();
     const sum = summarise(run && run.take ? [...run.results.values()] : [], { total: lines.length, source: lineSource() });
+    // The letter, from the take's own saved frames (spec 3.1); kept beside the line results
+    // (takes.js keeps `lines` as given and no other new field).
+    const scored = scoreRun({ frames: takeFramesOf(take), sum, take });
     run = null;
-    take.lines = sum;
-    takes.update(take.id, { lines: sum });
+    take.lines = { ...sum, grade: scored.result };
+    takes.update(take.id, { lines: take.lines });
     const best = newBest(sum, song.bestLines);
     if (best) { song.bestLines = { with: sum.with, total: sum.total, takeId: take.id, at: new Date().toISOString() }; store.update(song.id, { bestLines: song.bestLines }); }
     enterReview(take, { fresh: true });
-    showEnd(sum, { best, celebrate: CELEBRATE_ENDS.includes(take.endedBy) });
+    showEnd(take.lines, { best, celebrate: CELEBRATE_ENDS.includes(take.endedBy), scored });
   }
 
   function reviewFrames() {
@@ -1389,7 +1700,7 @@ export function bootSingNow(root, given = {}) {
     paintStars();      // back to this visit's own stars
     // Balance had the backing and the guide; they go back to this song's own sliders
     // (mix.destroy() left the backing at full).
-    if (player) { player.setBackingGain(levels.music); if (hasGuide) player.setLayerGain('guide', levels.singer); }
+    if (player) { player.setBackingGain(levels.music); if (hasGuide) player.setLayerGain('guide', guideHeard()); }
     mode = song ? 'sing' : 'library';
     paint();
   }
@@ -1674,11 +1985,12 @@ export function bootSingNow(root, given = {}) {
     $tapRow.hidden = mode !== 'tap';
     // A slider follows its level (a quick button or a key moved it, or another song opened).
     for (const [el, v] of [[$music, levels.music], [$guide, levels.singer], [$volume, levels.volume]]) if (el.value !== String(percent(v))) el.value = String(percent(v));
-    $guide.disabled = !hasGuide;
+    const noGuide = !!waysOn().noGuide;
+    $guide.disabled = !hasGuide || noGuide;
     // The number and one word sit beside the label; the whole sentence is the slider's
     // spoken value and its tooltip, so the row keeps its height.
-    const singerSays = hasGuide ? `${percent(levels.singer)} · ${guideWords(levels.singer)}` : 'This song has no separate singer’s voice.';
-    $guideWords.textContent = hasGuide ? `${percent(levels.singer)} · ${guideWords(levels.singer).split(':')[0]}` : 'None in this song';
+    const singerSays = !hasGuide ? 'This song has no separate singer’s voice.' : noGuide ? 'Off (Ways to sing): the singer’s voice is taken out.' : `${percent(levels.singer)} · ${guideWords(levels.singer)}`;
+    $guideWords.textContent = !hasGuide ? 'None in this song' : noGuide ? 'Off (Ways to sing)' : `${percent(levels.singer)} · ${guideWords(levels.singer).split(':')[0]}`;
     $guide.title = singerSays; $guide.setAttribute('aria-valuetext', singerSays);
     const said = musicWords(levels.music, hasGuide ? levels.singer : 0);
     const musicSays = `${percent(levels.music)} · ${said}`;
@@ -1693,8 +2005,15 @@ export function bootSingNow(root, given = {}) {
     for (const b of $mixMarks.children) {
       b.setAttribute('aria-pressed', String(b.dataset.mix === preset));
       // No separate singer: "Singer only" would be silence with no way to tell why.
-      b.disabled = !hasGuide && b.dataset.mix === 'singer';
+      b.disabled = (!hasGuide || noGuide) && b.dataset.mix === 'singer';
     }
+    // Ways to sing: what is on, in the button; locked while anything listens or plays.
+    const ways = waysWords(), locked = waysLocked();
+    const waysSays = `Ways to sing: ${ways.length ? ways.join(', ') : 'Usual'}`;
+    if ($ways.textContent !== waysSays) { $ways.textContent = waysSays; $ways.title = `${waysSays} (M)`; $ways.setAttribute('aria-label', `${waysSays} (M)`); }
+    $ways.dataset.silver = waysOn().noLine ? 'on' : 'off';
+    $ways.disabled = locked;
+    $waysWhy.textContent = locked ? WAYS_LOCKED : 'Kept for this song.';
     if (octaveShown !== `${song.id}:${octave}`) {
       octaveShown = `${song.id}:${octave}`;
       $octaveSlot.replaceChildren(segmented({ label: 'Octave', value: octave, onChange: (v) => setOctave(Number(v)),
@@ -1787,7 +2106,7 @@ export function bootSingNow(root, given = {}) {
 
   function drawStage(t, nowMs = performance.now()) {
     fitCanvas();
-    auroraCols = 0; auroraMs = 0; lineDrawn = 0;
+    auroraCols = 0; auroraMs = 0; lineDrawn = 0; headDrawn = false;
     if (!cw || !ch) return;
     const r = song.range;
     let lo = Math.floor((r ? r.lowest : 55) + 12 * octave) - VIEW.padNotes, hi = Math.ceil((r ? r.highest : 67) + 12 * octave) + VIEW.padNotes;
@@ -1829,6 +2148,11 @@ export function bootSingNow(root, given = {}) {
 
     // the owner's voice: live while singing, the take's own line in the review
     const pts = review ? review.frames.slice(firstAtOrAfter(review.times, t0), firstAtOrAfter(review.times, Math.min(t, t1))) : trail;
+    // By ear (grades spec 10.2): the light still rises with the voice's loudness, but every
+    // point sits on the bottom lane in the free hues, so it says "heard" and nothing of pitch;
+    // the voice line and its head are not drawn. The hue drifts with time, never with pitch.
+    const byEar = byEarNow();
+    const lightPts = byEar ? pts.map((p) => (p.midi === null ? p : { ...p, midi: lo, kind: 'free', hue: 0.5 + 0.45 * Math.sin(p.t * 0.6) })) : pts;
 
     // the curtain of light that rises from the voice line (js/app/aurora.js). Under the
     // singer's ribbon, so the tune stays on top of the owner's own light, and never ahead of
@@ -1839,11 +2163,11 @@ export function bootSingNow(root, given = {}) {
     gainAt = nowMs;
     const lightK = auroraGain * gs.gain;
     auroraTier = gs.tier;
-    if (sprites && sprites.ready && lightK > 0 && pts.length) {
+    if (sprites && sprites.ready && lightK > 0 && lightPts.length) {
       const a0 = performance.now();
       // The light moves with the song: a paused picture (a pause, a stopped review) is still.
       if (playing()) swayT = nowMs / 1000;
-      const n = curtain.build(pts, {
+      const n = curtain.build(lightPts, {
         now: t, pxPerSec: pps, nowX, yOfMidi: y, topY: 0, xMin: SKY.xMinPx, calm, light, colPx: gs.colPx, peakCap: auroraPeak,
         tall: clamp(ch / AU.tallRefPx, 1, AU.tallMax), capPx: SKY.capFrac * ch, swayT, shimmerT: swayT, snap: dprNow,
       });
@@ -1898,7 +2222,7 @@ export function bootSingNow(root, given = {}) {
     // stops dead at the end of the trail
     let last = null;
     g.lineCap = 'round';
-    for (const p of pts) {
+    for (const p of byEar ? [] : pts) {
       if (p.midi === null) { last = null; continue; }
       const kind = p.kind || 'free';
       const px = x(p.t), py = y(p.midi);
@@ -1921,6 +2245,7 @@ export function bootSingNow(root, given = {}) {
     if (last && t - last.t < 0.25) {
       const headK = review ? SKY.reviewHeadAlpha : 1, glow = glows[last.kind];
       if (glow && lightK > 0) { g.globalAlpha = SKY.glowAlpha * lightK * headK; g.drawImage(glow, last.px - SKY.glowPx / 2, last.py - SKY.glowPx / 2, SKY.glowPx, SKY.glowPx); }
+      headDrawn = true;
       g.globalAlpha = headK;
       g.fillStyle = colours.text;
       g.beginPath(); g.arc(last.px, last.py, 7, 0, Math.PI * 2); g.fill();
@@ -2088,6 +2413,9 @@ export function bootSingNow(root, given = {}) {
   function paintCount(c, stamp) {
     $count.classList.toggle('is-on', !!c);
     if (!c) { countShown = null; countSaid = ''; return; }
+    // The ways this run is sung with, in the card's small line ("By ear · no guide voice").
+    const ways = c.kind === 'start' ? waysWords().map((w, k) => (k ? w.toLowerCase() : w)).join(' · ') : '';
+    if ($countWays.textContent !== ways) $countWays.textContent = ways;
     // state().count names what the card SHOWS: it is set only once this frame draws (or
     // already drew) these numbers, never before the hold below sends the frame away; it was
     // a frame ahead of the card (design review 2026-10-14, finding 5).
@@ -2115,6 +2443,15 @@ export function bootSingNow(root, given = {}) {
     const live = (singing || recActive()) && playing();
     if (!live) { $readout.hidden = true; return; }
     $readout.hidden = false;
+    // By ear: no verdict, no note words, only the mode (spec 10.2).
+    const byEar = byEarNow();
+    $readMoon.hidden = !byEar;
+    if (byEar) {
+      $readout.dataset.kind = 'byear';
+      if ($readWord.textContent !== 'By ear') $readWord.textContent = 'By ear';
+      if ($readNum.textContent !== '') $readNum.textContent = '';
+      return;
+    }
     const fresh = lastRead && now - lastRead.at < 400;
     let word = 'Listening', num = 'sing with the ribbon', kind = 'listening';
     // Nothing to match while the singer rests: say so, whether or not the owner is singing.
@@ -2197,8 +2534,15 @@ export function bootSingNow(root, given = {}) {
     // The shell's own number keys go to the app's tabs, which this page does not have.
     if (/^[0-9]$/.test(e.key) && !typing) e.preventDefault();
     if (mode === 'library' || !transport) return;
-    // The shooting star is on its way: any key goes straight to the results.
-    if (end && end.timer) { e.preventDefault(); openEnd(); return; }
+    // The shooting star is on its way: any key goes straight to the final state.
+    if (end && end.reveal === 'run') { e.preventDefault(); finishReveal(); return; }
+    // The results layer: Esc closes it; R and L still retry; every other key is its own.
+    if (layer) {
+      if (e.key === 'Escape') { e.preventDefault(); closeLayer(); }
+      else if (!typing && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); retrySong(); }
+      else if (!typing && (e.key === 'l' || e.key === 'L') && practiseIndex() >= 0) { e.preventDefault(); retryLine(practiseIndex()); }
+      return;
+    }
     if (e.key === 'Escape' && end && end.open) { e.preventDefault(); closeEnd(); paint(); return; }
     if (e.key === 'Escape') {
       // Esc stops everything that listens. A take that was running is kept.
@@ -2224,7 +2568,12 @@ export function bootSingNow(root, given = {}) {
       case 'Home': case '0': act(() => jump((o) => transport.restart(o))); break;
       case 'k': case 'K': act(() => { if (count) stopAll('stop'); else if (playing()) transport.pause(); paint(); }); break;
       case 'p': case 'P': if (mode === 'sing' && !recActive()) act(listen); break;
-      case 'r': case 'R': if (mode === 'sing') act(recordPress); break;
+      // R: with the results or the take review showing, a new take from the top (spec 6.2);
+      // otherwise Record a take / Stop and keep, as before. No retry key while singing.
+      case 'r': case 'R': if (!recActive() && ((end && end.open) || mode === 'review')) act(retrySong); else if (mode === 'sing') act(recordPress); break;
+      case 'l': case 'L': if (!recActive() && ((end && end.open) || mode === 'review') && practiseIndex() >= 0) act(() => retryLine(practiseIndex())); break;
+      case 'm': case 'M': if (mode === 'sing') act(openWays); break;
+      case 'f': case 'F': if (!recActive() && ((end && end.open) || (mode === 'review' && review && review.lines))) act(openLayer); break;
       case '[': act(() => (review ? setNudge(-1) : setGuide(levels.singer - SONG.levels.keyStep))); break;
       case ']': act(() => (review ? setNudge(1) : setGuide(levels.singer + SONG.levels.keyStep))); break;
       default:
@@ -2232,7 +2581,7 @@ export function bootSingNow(root, given = {}) {
     }
   }, true);
 
-  document.addEventListener('pointerdown', () => { if (end && end.timer) openEnd(); }, true);
+  document.addEventListener('pointerdown', () => { if (end && end.reveal === 'run') finishReveal(); }, true);
 
   // ================================================================ the handle
 
@@ -2250,10 +2599,12 @@ export function bootSingNow(root, given = {}) {
       // the stage's last frame: its cost, the curtain's share of it, columns drawn, the
       // guard's step (0 full, 1 wide columns, 2 off), voice line pieces drawn, the newest
       // point's verdict
-      stageMs, auroraMs, auroraCols, auroraTier, lineDrawn, voiceKind: trail.length ? trail[trail.length - 1].kind : null,
+      stageMs, auroraMs, auroraCols, auroraTier, lineDrawn, headDrawn, ways: song ? waysOn() : {}, voiceKind: trail.length ? trail[trail.length - 1].kind : null,
       // line stars: the row as drawn; the end panel; the line on repeat; the shooting star and chime
       stars: [...starEls].map(([i, el]) => ({ i, level: el.dataset.level })).sort((a, b) => a.i - b.i),
-      end: end ? { open: end.open, waiting: !!end.timer, practice: end.practice, best: end.best, with: end.sum.with, close: end.sum.close, sung: end.sum.sung, total: end.sum.total, bestLine: end.sum.best, practise: end.sum.practise } : null,
+      end: end ? { open: end.open, waiting: end.reveal === 'run', reveal: end.reveal, practice: end.practice, best: end.best, with: end.sum.with, close: end.sum.close, sung: end.sum.sung, total: end.sum.total, bestLine: end.sum.best, practise: end.sum.practise,
+        grade: end.scored ? { letter: end.scored.grade.letter, state: end.scored.grade.state, accuracy: end.scored.accuracy, advice: end.scored.advice.id, chip: end.scored.best.chip ? end.scored.best.chip.id : null, silver: end.scored.result.silver } : null } : null,
+      layer: !!layer, rest: resting ? { left: Math.max(0, Math.ceil((resting.until - Date.now()) / 1000)) } : null, runs: runs.length,
       loop: loopNow ? { start: loopNow.start, end: loopNow.end } : null,
       sky: { ...sky },
     }),

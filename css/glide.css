@@ -1,0 +1,30 @@
+/* glide.css — Glide warm-up and Siren (js/app/exercises/glide.js, siren.js). Colours and sizes
+   come from tokens.css. The ribbon itself is drawn on the stage canvas (stage.js) from the
+   same tokens: --target-halo fill, --good-wash where the voice was with the path, hatched
+   --close-wash where it was not. --off is never used: warm-ups have no "off" (spec 7.1). */
+
+.ribbon-ex .rb-safety { color: var(--text); }
+.ribbon-ex .rb-fit { min-height: 1.25rem; }
+/* The reason beside the main button keeps its width, so its words never move the button. */
+.ribbon-ex .rb-why { min-width: 16em; }
+
+/* The stage gives up some height to the result's reserved place under it (as Long note's),
+   so the buttons stay on a 1440 x 900 screen. */
+.ribbon-ex .stage { height: clamp(260px, calc(100vh - 500px), 480px); }
+.rb-slot { min-height: 6.5rem; }
+
+/* The round's result, under the stage, never over the path it describes. A wide area, so it
+   fades both ways and never jumps; hidden, it is out of the reading order too. */
+.rb-card { display: grid; gap: var(--s1) var(--s5); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
+.rb-card[data-shown="no"] { opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
+.rb-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
+.rb-line { font: var(--t-h2); color: var(--text); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 899px), (max-height: 719px) {
+  .rb-slot { min-height: 5.5rem; }
+  .rb-line { font: var(--t-body); font-weight: 600; }
+  .ribbon-ex .rb-why { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rb-card, .rb-card[data-shown="no"] { transition-duration: var(--d-base), 0s; }
+}

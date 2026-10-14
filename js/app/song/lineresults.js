@@ -177,12 +177,26 @@ export function reasonWords(r, cfg = S) {
 
 export const newBest = (saved, bestLines, cfg = S) => !!saved && saved.with >= cfg.minBest && saved.with > ((bestLines && Number(bestLines.with)) || 0);
 
-export function endChimePlan(lastMidi, { best = false } = {}, rewards = CONFIG.rewards, cfg = S) {
+// The chime grows with the letter (grades spec 4.4): notes from this ladder, no third, so it
+// sits on a major and on a minor song alike. No letter 1 note, C and B 2, A 3, S 4, SS 5; a
+// new best one more, to at most 5. The counts are a GUESS.
+export const CHIME_LADDER = Object.freeze([0, 7, 12, 19, 24]);
+const CHIME_NOTES = Object.freeze({ SS: 5, S: 4, A: 3, B: 2, C: 2 });
+
+// grade: grades.js gradeOf(...) (or anything with `letter`); left out, the chime is as it was
+// before letters: root and fifth, plus the octave for a new best.
+export function endChimePlan(lastMidi, { best = false, grade = null } = {}, rewards = CONFIG.rewards, cfg = S) {
   let root = Number.isFinite(lastMidi) ? Math.round(lastMidi) : rewards.chimeRootMidi;
   if (Number.isFinite(lastMidi)) {
     while (root < cfg.chimeLoMidi) root += 12;
     while (root > cfg.chimeHiMidi) root -= 12;
   }
-  // Root and fifth only (no third): it sits on a major and on a minor song alike.
-  return [0, 7, ...(best ? [12] : [])].map((step, k) => ({ midi: root + step, at: k * rewards.chimeStepSec, dur: rewards.chimeNoteSec }));
+  let steps;
+  if (grade && typeof grade === 'object') {
+    const n = Math.min(CHIME_LADDER.length, (CHIME_NOTES[grade.letter] || 1) + (best ? 1 : 0));
+    steps = CHIME_LADDER.slice(0, n);
+    // STYLE.md: the whole chord goes down an octave while its top is above MIDI 96.
+    while (root + steps[steps.length - 1] > 96 && root - 12 >= 0) root -= 12;
+  } else steps = [0, 7, ...(best ? [12] : [])];
+  return steps.map((step, k) => ({ midi: root + step, at: k * rewards.chimeStepSec, dur: rewards.chimeNoteSec }));
 }

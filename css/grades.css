@@ -5,9 +5,9 @@
    NOT SEEN IN A BROWSER YET. Sizes, glow strengths and the silver are the spec's GUESSES,
    to be set on a screenshot in Dusk and Dawn.
 
-   Colours are tokens only (css/tokens.css). Three tokens the spec adds are NOT in
-   tokens.css yet: --silver, --silver-fill, --silver-glow. Until they are, the fallbacks
-   below use existing tokens, so a by-ear medallion is readable but not yet silver.
+   Colours are tokens only (css/tokens.css, which now has --silver, --silver-fill and
+   --silver-glow for Dusk and Dawn). The fallbacks below on those three only matter if
+   this sheet is used without tokens.css.
 
    Rank is never colour alone: the letter, the count of crown stars and the ring's length.
    Only transform, opacity and stroke-dashoffset move. The box keeps its height from the
@@ -42,7 +42,9 @@
 .mg-face { position: relative; width: var(--mg-size); height: var(--mg-size); display: grid; place-items: center; }
 .mg-ring { position: absolute; inset: 0; overflow: visible; }
 .mg-track { stroke: var(--line); }
-.mg-lit { stroke: var(--gold); }
+/* Delilah 2026-10-14: a CSS stroke beats the SVG's stroke="url(#sweep)" attribute, so every
+   A, B and C ring drew gold (seen in both themes). Only the non-sweep looks take it here. */
+.mg:not([data-ring^="sweep"]) .mg-lit { stroke: var(--gold); }
 .mg-outer { stroke: var(--gold); opacity: .6; }
 .mg[data-ring="silver"] .mg-lit, .mg[data-ring="silver"] .mg-outer { stroke: var(--mg-silver); }
 .mg[data-ring="sweepDim"] .mg-lit { opacity: .5; }
@@ -66,7 +68,9 @@
 .mg[data-bloom="0.5"] .mg-bloom { opacity: .5; }
 .mg[data-tone="silver"] .mg-bloom { background: radial-gradient(closest-side, var(--mg-silver-glow), transparent); }
 /* Dawn: no additive light. A flat disc behind the ring, the letter is ink. */
-[data-theme="dawn"] .mg-bloom { inset: 0; background: var(--gold-glow); }
+/* Delilah 2026-10-14, by eye: a flat disc read as a muddy coin; the soft edge keeps the
+   letter on full glow (dark gold on it 4.0 : 1, large bold text) and lets the ring lead. */
+[data-theme="dawn"] .mg-bloom { inset: 0; background: radial-gradient(closest-side, var(--gold-glow) 72%, transparent); }
 [data-theme="dawn"] .mg[data-tone="silver"] .mg-bloom { background: var(--mg-silver-glow); }
 
 .mg-under { margin: 0; font: var(--t-small); color: var(--text); text-align: center; white-space: nowrap; }
@@ -103,3 +107,205 @@
 
 [data-calm="on"] .mg *, .mg[data-calm="on"] * { animation: none; }
 @media (prefers-reduced-motion: reduce) { .mg * { animation: none; } }
+
+/* ================================================================ the Sing page (singnow.js)
+   The end panel with a letter (spec 4.1), the full results layer (5), My songs (6.3), the
+   rest pill (9). singnow.js loads this file after css/singnow.css, and .sn-end.has-grade
+   outweighs that file's three-column panel without touching it. Sizes are the spec's
+   GUESSES, NOT YET SET ON A SCREENSHOT. */
+
+/* The panel gets taller for the coach's line: 264 px of stage, 320 under 900 px wide. */
+/* 264 was a guess; 288 seen at 1440 x 900 (Delilah 2026-10-14): with the empty chip line
+   dropped, a two-line sentence and a two-line best line keep the buttons inside the panel,
+   and the stage still stops above the review's scrub row (300 covered its time labels).
+   Nothing below moves (negative margin). */
+.sn-stage:has(.sn-end.has-grade) { --end-h: 288px; }
+.sn-end.has-grade {
+  grid-template-columns: 136px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto; gap: var(--s2) var(--s5);
+}
+.sn-end[data-band="on"] { background-size: 100% 5px, auto; }
+.sn-end-advice {
+  grid-column: 1 / -1; grid-row: 1; display: flex; align-items: flex-start; gap: var(--s2);
+  padding-bottom: var(--s2); border-bottom: 1px solid var(--line); font: var(--t-body);
+}
+.sn-end-advice svg { flex: none; margin-top: 2px; color: var(--accent); }
+.sn-end-advice strong { font-weight: 600; }
+.sn-end.has-grade .sn-grade { grid-column: 1; grid-row: 2 / span 2; justify-self: center; align-self: start; position: relative; }
+.sn-end.has-grade .sn-end-main { grid-column: 2; grid-row: 2; display: grid; align-content: start; gap: var(--s1); }
+.sn-end.has-grade .sn-end-card { grid-row: 2 / span 2; }
+.sn-end.has-grade .sn-end-actions { grid-column: 2; grid-row: 3; flex-wrap: wrap; }
+.sn-end-chip-line { min-height: 1.5rem; }
+/* No chip for this take: the line is empty from the first frame (singnow.js builds it once),
+   so dropping it cannot move anything during the reveal. It freed the row the action
+   buttons needed (they were cut off under a two-line best sentence, seen at 1440). */
+.sn-end-chip-line:empty { display: none; }
+/* "Part of the song" is already the medallion's own label; the same words as a chip beside
+   it made three in a row (panel, layer). Spec 6.1 amended 2026-10-14: no chip for it. */
+.sn-end-chip-line:has(> [data-chip="part"]), .sn-results .sn-chip[data-chip="part"] { display: none; }
+.sn-end.has-grade .sn-end-best { margin-top: 0; }
+.sn-best-line { font: var(--t-small); color: var(--text); }
+.sn-best-next { color: var(--muted); }
+.sn-chip {
+  display: inline-flex; align-items: center; gap: var(--s1); padding: 0 var(--s2); border-radius: var(--r-pill);
+  border: 1px solid var(--line-strong); font: var(--t-tiny); color: var(--text);
+}
+.sn-chip[data-tone="gold"] { border-color: var(--gold); color: var(--gold); }
+.sn-chip[data-tone="silver"] { border-color: var(--silver); color: var(--silver); }
+.sn-chip[data-tone="accent"] { border-color: var(--accent); color: var(--accent); }
+
+/* The reveal (4.3): the chip and the best line fade in at the strike; their boxes are there
+   from the first frame. A soft ring of light leaves the medallion at the strike (its peak
+   alpha .3 on a 2 px line keeps the flash number low). */
+.sn-end[data-reveal="run"] .sn-end-chip-line, .sn-end[data-reveal="run"] .sn-best-line { animation: mg-in var(--d-base) linear 1400ms both; }
+.sn-end[data-reveal="run"] .sn-grade::after {
+  content: ""; position: absolute; left: 50%; top: 72px; width: 96px; height: 96px; margin: -48px 0 0 -48px;
+  border-radius: 50%; border: 2px solid var(--gold); opacity: 0; pointer-events: none;
+  animation: mg-ring var(--d-reveal) var(--ease) 1400ms both;
+}
+@keyframes mg-ring { from { opacity: .3; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+[data-calm="on"] .sn-end *, [data-calm="on"] .sn-end *::after { animation: none !important; }
+
+@media (max-width: 899px) {
+  /* 320 was a guess; at 700 x 800 the four rows need 491 px of panel (measured), so the
+     cards and the buttons were cut off. 540 covers the scrub and transport while the panel
+     is open; nothing below moves. (Delilah 2026-10-14) */
+  .sn-stage:has(.sn-end.has-grade) { --end-h: 540px; }
+  .sn-end.has-grade { grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto auto; column-gap: var(--s4); }
+  .sn-end.has-grade .sn-grade { grid-column: 1; grid-row: 2; }
+  .sn-end.has-grade .sn-end-main { grid-column: 2 / -1; grid-row: 2; padding-right: 0; }
+  /* The first card took the 96 px medallion column alone ("Line 5 · 0:22" broke in two at
+     700 px); the two cards now share the full width. */
+  .sn-end.has-grade .sn-end-card { grid-row: 3; grid-column: 1 / 3; }
+  .sn-end.has-grade .sn-end-card ~ .sn-end-card { grid-column: 3 / -1; }
+  .sn-end.has-grade .sn-end-actions { grid-column: 1 / -1; grid-row: 4; justify-self: start; }
+  .sn-end[data-reveal="run"] .sn-grade::after { width: 72px; height: 72px; margin: -36px 0 0 -36px; top: 60px; }
+}
+
+/* ---------------------------------------------------------------- the full results layer */
+.sn-results {
+  position: fixed; inset: 56px 0 0; z-index: 40; display: grid; place-items: start center; overflow: auto;
+  padding: var(--s5) var(--s4); background: color-mix(in srgb, var(--bg) 96%, transparent);
+  animation: sn-results-in var(--d-slow) var(--ease) both;
+}
+.sn-results[data-calm="on"] { animation: sn-results-fade var(--d-base) linear both; }
+@keyframes sn-results-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes sn-results-fade { from { opacity: 0; } }
+.sn-results p, .sn-results h2, .sn-results h3, .sn-results ul { margin: 0; }
+.sn-results-card-main {
+  width: min(1120px, 100%); display: grid; gap: var(--s4); padding: var(--s6); border-radius: var(--r-l); border: 1px solid var(--line);
+  background: linear-gradient(90deg, var(--aurora-low), var(--aurora-mid), var(--aurora-high)) top / 100% 3px no-repeat, var(--surface);
+}
+.sn-results-head { font: var(--t-h2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
+.sn-results-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-s); }
+.sn-results-advice { display: flex; gap: var(--s2); align-items: flex-start; font: var(--t-body); }
+.sn-results-advice svg { flex: none; margin-top: 2px; color: var(--accent); }
+.sn-results-advice strong { font-weight: 600; }
+.sn-results-honesty { margin-top: calc(-1 * var(--s3)); }
+.sn-results-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.sn-results-left { display: grid; justify-items: center; align-content: start; gap: var(--s2); text-align: center; }
+.sn-results-quiet { color: var(--muted); }
+.sn-results-right { display: grid; gap: var(--s4); align-content: start; min-width: 0; }
+.sn-results-sub { font: var(--t-small); font-weight: 600; color: var(--muted); }
+.sn-hist { margin: 0; display: grid; gap: var(--s1); }
+.sn-hist-box { height: 104px; }
+.sn-hist-plot { width: 100%; height: 100%; display: block; }
+.sn-hist-bar.is-good { fill: var(--good); }
+.sn-hist-hatch { fill: var(--close); }
+.sn-hist-bar.is-close { stroke: var(--close); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sn-hist-bar.is-off { fill: none; stroke: var(--off); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sn-hist-centre { stroke: var(--target); stroke-opacity: .6; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sn-hist-middle { stroke: var(--text); stroke-opacity: .7; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sn-hist-axis { position: relative; height: 2.5rem; border-top: 1px solid var(--line-strong); font: var(--t-tiny); color: var(--muted); }
+.sn-hist-axis span { position: absolute; top: 2px; white-space: nowrap; }
+.sn-hist-axis .is-low { left: 0; }
+.sn-hist-axis .is-high { right: 0; }
+.sn-hist-axis .is-on, .sn-hist-axis .is-tick { transform: translateX(-50%); }
+.sn-hist-axis .is-tick { opacity: .75; top: 1.2rem; }
+.sn-hist-axis .sn-hist-tri { top: -1px; width: 0; height: 0; transform: translateX(-50%); border: 5px solid transparent; border-top: 0; border-bottom: 7px solid var(--text); }
+.sn-hist figcaption { font: var(--t-body); }
+.sn-counts { display: grid; gap: var(--s2); justify-items: start; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.sn-counts-words { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); padding: 0; list-style: none; font: var(--t-small); }
+.sn-counts-words li { display: inline-flex; align-items: center; gap: var(--s1); }
+.sn-counts-row { display: flex; align-items: center; gap: var(--s3); width: 100%; }
+.sn-counts-bar { flex: 1; display: flex; height: 12px; border-radius: var(--r-pill); overflow: hidden; gap: 2px; }
+.sn-counts-bar span { flex-basis: 0; min-width: 3px; }
+.sn-counts-bar [data-id="great"] { background: var(--good); }
+.sn-counts-bar [data-id="good"] { background: repeating-linear-gradient(45deg, var(--close) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--close); }
+.sn-counts-bar [data-id="ok"] { box-shadow: inset 0 0 0 1px var(--off); background: radial-gradient(circle, var(--off-wash) 1px, transparent 1.5px) 0 0 / 4px 4px; }
+.sn-counts-bar [data-id="miss"] { box-shadow: inset 0 0 0 1px var(--off); }
+.sn-counts-row .reason { white-space: nowrap; }
+.sn-results-card { display: grid; gap: var(--s2); align-content: start; }
+.sn-results-takes { display: grid; gap: var(--s1); padding: 0; list-style: none; font: var(--t-small); }
+.sn-results-take { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.sn-results-take[aria-current="true"] { font-weight: 600; }
+.sn-results-take-star { display: inline-flex; width: 24px; }
+.sn-results-take-star path { fill: var(--gold-fill); stroke: var(--gold); stroke-width: .18; }
+.sn-results-chip { padding: 0 var(--s2); border: 1px solid var(--line-strong); border-radius: var(--r-pill); font: var(--t-tiny); }
+/* Sticky at the layer's own bottom edge (0, not minus the card's padding: that left the row
+   partly below the window at 1024 x 640 and 700 x 800, lab part 5). */
+.sn-results-actions { position: sticky; bottom: 0; padding: var(--s3) 0; background: var(--surface); border-top: 1px solid var(--line); flex-wrap: wrap; gap: var(--s2); }
+.sn-results-actions .sn-gap { flex: 1; }
+/* Delilah 2026-10-14: the layer's bottom padding showed the scrolled text under the sticky
+   row (seen at 1024 x 640 and 700 x 800); the row now paints the surface down over it. */
+.sn-results-actions { box-shadow: 0 var(--s5) 0 var(--surface); }
+/* The ring is mounted at 168; smaller windows scale the same SVG (spec 5.2: 120 and 104). */
+.sn-results-medal .mg-ring { width: 100%; height: 100%; }
+.sn-results-keep { display: inline-flex; align-items: center; gap: var(--s2); }
+/* Spec 5.1 bottom row: "Your best line", "A line to practise", the takes; equal width. The line
+   cards are the panel's own (.sn-end-card), unhooked from the panel's grid placement. */
+.sn-results-bottom { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s6); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.sn-results-bottom .sn-end-card { grid-row: auto; grid-column: auto; padding-left: 0; border-left: 0; }
+/* The layer has room for the quoted words on two lines: no ellipsis there. */
+.sn-results-bottom .sn-end-words { white-space: normal; }
+.sn-results-bottom .sn-end-card ~ .sn-results-card { padding-left: var(--s6); border-left: 1px solid var(--line); }
+.sn-results-fold { display: none; justify-self: start; }
+@media (max-width: 1024px) {
+  /* 5.2: the takes fold to "Earlier takes (n)", opened in place. */
+  .sn-results-fold { display: inline-flex; }
+  .sn-results-takes-card[data-fold="closed"] .sn-results-takes,
+  .sn-results-takes-card[data-fold="closed"] .sn-results-takes ~ .btn { display: none; }
+}
+@media (max-width: 1100px) {
+  .sn-results-grid { grid-template-columns: 248px minmax(0, 1fr); }
+  .sn-results-card-main { padding: var(--s5); }
+  .sn-hist-box { height: 80px; }
+  .sn-results-medal .mg { --mg-size: 120px !important; --mg-letter-size: 3.5rem; }
+}
+@media (max-width: 760px) {
+  .sn-results { padding: var(--s3) var(--s2); }
+  .sn-results-card-main { padding: var(--s4); }
+  .sn-results-grid { grid-template-columns: 1fr; }
+  .sn-hist-box { height: 88px; }
+  /* Spec 5.2: the ring at the left, its words at its right, in one row. */
+  .sn-results-left { grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; column-gap: var(--s4); text-align: left; }
+  .sn-results-left > .sn-results-medal { grid-row: 1 / span 8; align-self: start; }
+  .sn-results-left { row-gap: 0; }   /* the 8 spanned rows must not add 7 gaps of empty space */
+  .sn-results-left > * + * + * { margin-top: var(--s2); }
+  .sn-results-medal .mg { --mg-size: 104px !important; --mg-letter-size: 3rem; }
+  /* 5.2: the two line cards side by side without their quoted words, the takes below. */
+  .sn-results-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
+  .sn-results-bottom .sn-end-words:not(.is-say) { display: none; }
+  .sn-results-bottom .sn-end-card ~ .sn-results-card, .sn-results-bottom .sn-results-card { grid-column: 1 / -1; padding-left: 0; border-left: 0; }
+}
+
+/* ---------------------------------------------------------------- My songs and the rest */
+.sn-song-best { display: inline-flex; align-items: center; gap: var(--s2); margin-top: var(--s1); flex-wrap: wrap; }
+.sn-song-best-words { font: var(--t-small); }
+.sn-song-best-more { flex-basis: 100%; }
+/* Delilah 2026-10-14: singnow.css stretches every span in a take row (flex: 1), so the
+   "Best" chip became a pill as wide as the row. And the 40 px badge drops the SS outer
+   ring, which stuck out past the card's text edge. */
+.sn-take > .sn-chip { flex: none; }
+.mg[data-size="40"] .mg-outer { display: none; }
+.sn-rest { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font: var(--t-small); color: var(--muted); }
+
+/* ---- ways to sing (grades spec 10): the quiet button beside Octave, its reason line, the
+   readout's moon and the count card's small line. The border goes silver with "By ear". */
+.sn-ways { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1); }
+.sn-ways-btn[data-silver="on"] { border-color: var(--silver); }
+.sn-ways .reason { margin: 0; }
+.sn-readout-moon { display: inline-flex; color: var(--silver); margin-right: var(--s2); vertical-align: middle; }
+.sn-readout[data-kind="byear"] { border-left-color: var(--silver); }
+.sn-readout[data-kind="byear"] strong { color: var(--silver); }
+.sn-count-ways { font: var(--t-small); color: var(--muted); min-height: 1lh; }

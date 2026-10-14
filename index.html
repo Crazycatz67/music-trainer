@@ -21,6 +21,8 @@
 <link rel="stylesheet" href="css/range.css">
 <link rel="stylesheet" href="css/voicecheck.css">
 <link rel="stylesheet" href="css/longnote.css">
+<link rel="stylesheet" href="css/eyesclosed.css">
+<link rel="stylesheet" href="css/glide.css">
 <link rel="stylesheet" href="css/ownvoice.css">
 <link rel="stylesheet" href="css/backup.css">
 <link rel="stylesheet" href="css/coach.css">
@@ -82,6 +84,9 @@
   import { mountRangeFinder, rangeSummaryCard } from './js/app/exercises/rangefinder.js';
   import { mountVoiceCheck } from './js/app/exercises/voicecheck.js';
   import { mountLongNote } from './js/app/exercises/longnote.js';
+  import { mountEyesClosed } from './js/app/exercises/eyesclosed.js';
+  import { mountGlide } from './js/app/exercises/glide.js';
+  import { mountSiren } from './js/app/exercises/siren.js';
   import { portraitWords, readPortraits } from './js/app/voicecheck.js';
   import { mountPortrait } from './js/app/portrait.js';
   import { exerciseRange, figureRange, readRange } from './js/app/range.js';
@@ -207,6 +212,16 @@
         if (kind === 'long-note') {
           // Showing it asks for nothing: the microphone waits for the singer's own press.
           const screen = mountLongNote(view, { shell, micflow, settings, storage, sessions, range: exerciseRange(saved) });
+          return () => screen.destroy();
+        }
+        if (kind === 'eyes-closed') {
+          // Showing it asks for nothing: the microphone waits for Start.
+          const screen = mountEyesClosed(view, { shell, micflow, settings, storage, sessions, range: exerciseRange(saved) });
+          return () => screen.destroy();
+        }
+        if (kind === 'glide' || kind === 'siren') {
+          // Showing it asks for nothing: the microphone waits for the singer's own press.
+          const screen = (kind === 'glide' ? mountGlide : mountSiren)(view, { shell, micflow, settings, sessions, range: exerciseRange(saved) });
           return () => screen.destroy();
         }
         if (ctx.param !== 'match') return placeholderScreens.practice(view, ctx);
