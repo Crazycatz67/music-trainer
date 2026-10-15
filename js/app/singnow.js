@@ -128,7 +128,7 @@ import { letterWords, takeResults, takeWords } from './song/resultsmodel.js';
 import { medallionModel, mountMedallion, wholePercent } from './song/medallion.js';
 import { resultsView } from './song/resultsview.js';
 import { createSynth } from '../synth.js';
-import { createSongService } from './singnow-service.js';
+import { createSongService, songsSettings } from './singnow-service.js';
 
 // ---------------------------------------------------------------- numbers and words
 // Moved to singnow-words.js (pure, Node-safe); every name this file exported is re-exported.
@@ -665,18 +665,15 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     } else $auto.replaceChildren(line.text);
   }
 
-  // "Look up words automatically" joins the shell's Settings sheet when it opens (the
-  // sheet is the shell's; this page adds its one part in the same turn, above "Your data").
-  on(document, 'mt:sheet', () => {
-    const body = document.querySelector('dialog.sheet-settings[open] .sheet-body, dialog.sheet-settings .sheet-body');
-    if (!body || body.querySelector('#settings-words')) return;
-    const part = h('section', { class: 'settings-part', id: 'settings-words' }, h('h3', { tabindex: '-1' }, 'Words'),
-      switchRow({ label: 'Look up words automatically', value: prefs.autoWords,
-        note: 'On: when you add a song, its title and artist are sent to lrclib.net to find the words. Off: nothing is sent until you press “Look up the words” yourself.',
-        onChange: (v) => { prefs.autoWords = !!v; savePrefs(); paintNotice(); autoShown = ''; if (mode !== 'library') paint(); } }));
-    const data = body.querySelector('#settings-data');
-    if (data) data.before(part); else body.append(part);
-  });
+  // "Look up words automatically" is the Settings sheet's "Songs" part (spec 3.4), the
+  // shell's own section: the app registers it at start, this keeps sing.html's sheet the same
+  // (same id: registering again replaces it). The switch reaches an open screen through the
+  // service, so the notice and the words line follow it at once.
+  if (shell && typeof shell.registerSettingsSection === 'function') shell.registerSettingsSection('songs', 'Songs', songsSettings({ storage, service }));
+  const offPrefs = service.onPrefs(() => { paintNotice(); autoShown = ''; if (mode !== 'library') paint(); });
+  // The analysis queue holds while this micflow listens. Once per micflow and NOT undone by
+  // destroy(): the app's micflow and the queue both outlive this screen.
+  service.watchMic(micflow);
 
   // ---- the drop area: the whole page takes a drop while the library shows
   $drop.addEventListener('click', () => $file.click());
@@ -2397,9 +2394,11 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (e.metaKey || e.ctrlKey || e.altKey || sheetOpen()) return;
     const el = e.target instanceof HTMLElement ? e.target : null;
     const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-    // The shell's own number keys go to the app's tabs, which this page does not have.
-    if (/^[0-9]$/.test(e.key) && !typing) e.preventDefault();
+    // In the library 1 to 5 are the places, as everywhere (spec 3.3): only below this line
+    // are the digits the song's own. (In the app the shell already stands aside for them,
+    // skyroutes.js screenOwnsKey; this keeps sing.html's top-bar tabs out of a song too.)
     if (mode === 'library' || !transport) return;
+    if (/^[0-9]$/.test(e.key) && !typing) e.preventDefault();
     // The shooting star is on its way: any key goes straight to the final state.
     if (end && end.reveal === 'run') { e.preventDefault(); finishReveal(); return; }
     // The results layer: Esc closes it; R and L still retry; every other key is its own.
@@ -2513,7 +2512,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   app.destroy = () => {
     if (destroyed) return;
     destroyed = true;
-    const samples = recActive() ? auroraSamples() : null;
+    const kept = recActive();
+    const samples = kept ? auroraSamples() : null;
     // 1. the take ends and is kept, the count-in is cancelled, the player pauses, the mic goes
     stopAll('left');
     // 2. sound out: a 120 ms ramp to 0, then the context closes (no click, no tail)
@@ -2536,7 +2536,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (shell && typeof shell.setBusy === 'function') shell.setBusy(null);
     // 4. every listener and micflow hook: the app's micflow outlives the screen
     for (const off of offs.splice(0)) off();
-    offMicState(); offMicFrame(); offJobs();
+    offMicState(); offMicFrame(); offJobs(); offPrefs();
     if (typeof offBanners === 'function') offBanners();
     if (sizer) sizer.disconnect();
     // 5. what it put outside the view
@@ -2546,6 +2546,9 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     ownDialogs.clear();
     $lib.remove(); $sing.remove(); $recPill.remove();
     if (layer) layer.remove();
+    // Leaving asked nothing (spec 3.4), so the next screen says where the take went. The
+    // toast is the shell's, on document.body: it outlives this screen (4 s, polite).
+    if (kept) toast('Your take is kept in My songs.');
     // 6. the take's sky, memory only, for the home (slice 4)
     if (samples) service.keepAurora(samples);
     if (window.__singnow === app) delete window.__singnow;

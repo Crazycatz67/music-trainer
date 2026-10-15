@@ -100,7 +100,7 @@
   import { mountCoach, watchRounds } from './js/app/coachcard.js';
   import { createDaily, dailyPlan, mountToday } from './js/app/daily.js';
   import { readSaved, SAVED_KEY } from './js/app/figures.js';
-  import { frameOf } from './js/app/skyroutes.js';
+  import { frameOf, lyreLine } from './js/app/skyroutes.js';
 
   // labs/home-lab.html runs this very page in a frame and hands it a storage of its own and
   // the sky's test switches, so a test run never reads or writes the owner's saved record.
@@ -140,8 +140,15 @@
   let songMode = null;
   let moved = false;
   addEventListener('hashchange', () => { moved = true; }, { once: true });
+  // The home sky, once loaded: the Lyre shows "Getting n songs ready" from the song service.
+  let homeApi = null, songsLine = null, songService = null;
   const loadSongMode = () => songMode || (songMode = import('./js/app/singnow.js')
-    .then(async (screen) => ({ screen, service: (await import('./js/app/singnow-service.js')).createSongService({ storage }) })));
+    .then(async (screen) => {
+      const service = (await import('./js/app/singnow-service.js')).createSongService({ storage });
+      songService = service;
+      service.onReady((n) => { songsLine = lyreLine(n); if (homeApi) homeApi.setSongsLine(songsLine); });
+      return { screen, service };
+    }));
   // Every screen, built here or the shell's own, gets its frame (spec 3.1) on the view before
   // it is drawn; the sky clears it.
   const framed = (given) => {
@@ -285,6 +292,11 @@
     }),
   });
   // Nothing here opens the microphone: micflow waits for a press on a screen.
+  // Settings shows the Songs part before Songs is first opened (the screen re-registers it
+  // with its live service when it mounts).
+  shell.registerSettingsSection('songs', 'Songs', (el) => {
+    import('./js/app/singnow-service.js').then((m) => m.songsSettings({ storage, service: () => songService })(el));
+  });
   micflow = createMicFlow({ shell, settings, chipEl: document.getElementById('mic-chip') });
   mountTour({ shell, micflow, settings }).start();
   watchRounds(shell.view);
@@ -302,6 +314,8 @@
       startSetup: () => !setupPutOff && setupStart(storage),
       onFrame: lab && lab.onFrame,
     });
+    homeApi = home;
+    if (songsLine) home.setSongsLine(songsLine);
     if (lab) lab.app = { shell, home, micflow, daily, sessions };
   }).catch((err) => {
     doc.dataset.sky = 'failed';

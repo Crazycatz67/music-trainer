@@ -16,7 +16,21 @@
 //       Stored under 'music-trainer.takes.v1' as a JSON list, newest last, at most `max`:
 //       { id, savedAt (ISO), kind: 'free', targetMidi | null, cleanupWasOn, facts, points }.
 //       NOTE for whoever builds Progress: this shape is a first version, not yet read by
-//       anything.
+//       anything. Since 2026-10-15 an entry may also carry audioId (the take's sound in the
+//       take store, js/app/song/takes.js, kind 'free') and audioStartSec (where that sound
+//       begins on the line, audioSpan below); older entries have neither: a line, no sound.
+//   audioSpan(rec, lineZeroSec, cutSec) -> { startSec, endSec } | null
+//       Where a recording sits on the line's own time (seconds, 0 = the first point kept).
+//       rec = { songStart, sampleRate, length }: songStart is the microphone-clock time of
+//       sample 0 (the recorder's "song" time is that clock here, freeClock below);
+//       lineZeroSec: the microphone-clock time of the line's first point before trimming;
+//       cutSec: what trimTake cut off the front. null when there is no usable sound.
+//   playPlan(span, fromSec, durSec) -> { offsetSec, delaySec } | null
+//       To play from line time fromSec: start offsetSec into the sound, after delaySec of
+//       silence. null when no sound is left from fromSec to the end of the line.
+//   playbackGain(samples, { peak = 0.7, maxGain = 8 }) -> number
+//       One fixed gain for the whole take: its loudest sample lands at `peak` (a quiet
+//       laptop-mic take is lifted, at most maxGain times; a loud one is brought under 1).
 //
 // CONTRACT — mountFreeSing(view, { shell, micflow, settings, config?, micOptions?, storage? }) -> screen
 //   screen.start() -> Promise<boolean>, screen.stop(), screen.state() -> { mode, targetMidi, facts }
@@ -27,12 +41,24 @@
 //       asks for the microphone again
 //   micOptions is passed to micflow.request(): { stream } runs the whole screen from a
 //   synthesised stream with no microphone (the stage lab does this).
+//   takes: a take store (takes.js); default the app's own (IndexedDB), null = record no sound.
+//   SOUND (2026-10-15, owner: "whats the point in recording just your wavelength"): the same
+//   press that starts listening also records the singer, through the song recorder
+//   (js/app/song/recorder.js) on the microphone's own stream and clock: no second microphone
+//   request. The sound is written to the take store while singing (kind 'free'), stops at
+//   the first pause (the microphone is released there) and is only recorded when it fits
+//   without pushing an older take out. The review plays it with a playhead over the line.
+//   It is kept only by "Save this take"; starting again or leaving removes an unsaved one.
+//   screen.state() also gives { sound: { seconds, bytes, startSec, endSec } | null, playing, cursor }.
 
 import { createSynth, timbreFor } from '../synth.js';
 import { CONFIG } from './config.js';
 import { createPitchView } from './hud.js';
 import { confirmSheet, h, icon, STORAGE_PREFIX, toast } from './shell.js';
 import { displayNote, segmentRuns } from './stage.js';
+import { createRecorder } from './song/recorder.js';
+import { peakOf } from './song/pcm.js';
+import { createTakeStore, idbBackend } from './song/takes.js';
 
 // ---------------------------------------------------------------- pure
 
@@ -113,13 +139,55 @@ export function saveTake(storage, take, max = CONFIG.freesing.maxSavedTakes) {
 
 // ---------------------------------------------------------------- browser: the screen
 
+export function audioSpan(rec, lineZeroSec, cutSec) {
+  if (!rec || !Number.isFinite(rec.songStart) || !(rec.sampleRate > 0) || !(rec.length > 0)) return null;
+  if (!Number.isFinite(lineZeroSec) || !Number.isFinite(cutSec)) return null;
+  const startSec = rec.songStart - lineZeroSec - cutSec;
+  return { startSec, endSec: startSec + rec.length / rec.sampleRate };
+}
+
+export function playPlan(span, fromSec, durSec) {
+  if (!span) return null;
+  const from = Math.max(0, fromSec);
+  if (span.endSec <= from || span.startSec >= durSec) return null;
+  return { offsetSec: Math.max(0, from - span.startSec), delaySec: Math.max(0, span.startSec - from) };
+}
+
+export function playbackGain(samples, { peak = 0.7, maxGain = 8 } = {}) {
+  const top = peakOf(samples);
+  return top > 0 ? Math.min(maxGain, peak / top) : 1;
+}
+
+// The song recorder wants a player for its clock. Free sing has no music: this stand-in is
+// always "playing", its song time is the microphone context's own time, and it never ends
+// (the recorder's maxSec still applies). One clock for the pitch frames and the sound means
+// the line and the sound line up with no conversion.
+function freeClock(ctx) {
+  return {
+    ctx,
+    state: () => ({ duration: Infinity, status: 'playing', loop: false }),
+    segmentAt: () => ({ songStart: 0, ctxStart: 0, ctxEnd: Infinity }),
+    latency: () => ({ output: null, base: Number.isFinite(ctx.baseLatency) ? ctx.baseLatency : null }),
+    on: () => () => {},
+    play() {},
+  };
+}
+
 const NOTE_OFFSETS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const MIC_OFF_WHY = 'The microphone is off. Press Resume to turn it back on.';
 
 // sessions: js/app/sessions.js createSessions(). A take that had singing in it is noted
 // there as a finished exercise (no target, so plain facts only). Without it: not recorded.
-export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG, micOptions, storage, sessions = null } = {}) {
+export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG, micOptions, storage, sessions = null, takes } = {}) {
   const F = config.freesing;
+  let takeStore = takes;
+  const soundStore = () => {
+    if (takeStore === undefined) { try { takeStore = createTakeStore({ backend: idbBackend() }); } catch { takeStore = null; } }
+    return takeStore;
+  };
+  // rec: the recorder of this take. sound: its finished recording { id, samples, sampleRate,
+  // seconds, bytes, span, gain, kept }. play: what is sounding { ctx, src, t0, from }.
+  let rec = null, soundRec = null, got = null, waiting = false, sound = null, soundWhy = '', play = null, playCtx = null, lineZero = null;
   const store = storage ?? (() => { try { return window.localStorage; } catch { return null; } })();
   const smallMq = window.matchMedia('(max-width: 639px), (max-height: 519px)');
   let mode = 'idle', targetMidi = null, facts = null, take = null, synth = null, tone = null;
@@ -133,6 +201,8 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
   const watchBtn = h('button', { class: 'btn btn-quiet', type: 'button', hidden: true }, icon('play', 16), ' Watch it again');
   const saveBtn = h('button', { class: 'btn btn-quiet', type: 'button', hidden: true }, 'Save this take');
   const saveWhy = h('p', { class: 'reason' });
+  const playBtn = h('button', { class: 'btn btn-secondary free-play', type: 'button', hidden: true, 'aria-pressed': 'false' });
+  const soundLine = h('p', { class: 'reason sound-line' });
   const factsLine = h('p', { class: 'facts', 'aria-live': 'polite' });
   const aimLine = h('p', { class: 'reason aim-line' });
   const strip = h('div', { class: 'note-strip', role: 'group', 'aria-label': 'Notes in this octave' });
@@ -149,7 +219,7 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
   view.append(
     h('div', { class: 'title-row' }, h('a', { class: 'btn btn-quiet back', href: '#/today' }, icon('back', 16), ' Back'), h('h1', { tabindex: '-1' }, 'Free sing')),
     bannerSlot, viewHost, factsLine,
-    h('div', { class: 'action-row' }, h('div', { class: 'action-main' }, primary, stopBtn, primaryWhy), aimBtn, aimLine, watchBtn, saveBtn, saveWhy),
+    h('div', { class: 'action-row' }, h('div', { class: 'action-main' }, primary, stopBtn, primaryWhy), aimBtn, aimLine, playBtn, watchBtn, saveBtn, saveWhy, soundLine),
     aimPanel);
   const pv = createPitchView(viewHost, { config });
   const unmountBanners = micflow.mountBanners(bannerSlot);
@@ -168,7 +238,14 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     stopBtn.hidden = mode !== 'paused';
     const reviewing = mode === 'review' && !!take;
     saveBtn.hidden = !reviewing;
-    watchBtn.hidden = !reviewing;
+    saveBtn.disabled = waiting;                    // the sound's id is not known yet
+    playBtn.hidden = !reviewing || !sound;
+    watchBtn.hidden = !reviewing || !!sound;
+    playBtn.replaceChildren(icon(play ? 'pause' : 'play', 16), play ? ' Pause' : ' Play');
+    playBtn.setAttribute('aria-pressed', play ? 'true' : 'false');
+    // Said quietly: a take with no sound (an old one, no room, or the recorder could not run).
+    soundLine.textContent = !reviewing ? '' : sound ? (sound.span.endSec < facts.durSec - 1 ? 'The sound stops where you paused.' : '')
+      : waiting ? 'Getting the sound ready…' : soundWhy || 'This take has no sound, only the line.';
     factsLine.textContent = mode === 'review' ? factsText(facts, noteStyle()) : '';
     aimLine.textContent = targetMidi === null ? '' : `Aiming for ${displayNote(targetMidi, noteStyle()).text}`;
     view.dataset.mode = mode;
@@ -207,24 +284,121 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     if (mode !== 'starting') return false;       // left or destroyed while waiting
     if (!ok) { setMode('idle'); return false; }
     pv.clear();
-    take = null; facts = null; lastT = null; tOffset = 0; rebase = true;
+    take = null; facts = null; lastT = null; tOffset = 0; rebase = true; lineZero = null;
+    stopPlay(); dropSound();
     saveWhy.textContent = '';
     setMode('live');
     pv.stage.start();
     micflow.setListening(true);
     shell.setBusy(guard);
+    startSound();
     return true;
   }
+
+  // ---- the sound: recorded beside the line from the same press (see the contract)
+  async function startSound() {
+    const store = soundStore(), mic = micflow.mic;
+    soundWhy = '';
+    if (!store || !mic || !mic.ctx) return;
+    const r = createRecorder({ micflow, player: freeClock(mic.ctx), store, title: 'Free sing', kind: 'free' });
+    rec = soundRec = r;
+    waiting = true;
+    let settle;
+    const drop = (why = '') => { if (rec === r) rec = null; soundWhy = why; r.destroy(); settle(null); };
+    new Promise((done) => {
+      settle = done;
+      r.onTake(done);
+      r.subscribe((st) => { if (st.status === 'idle' && !r.last) done(null); });
+    }).then((t) => gotSound(t, r));
+    // Never push an older take (a song's) out for a Free sing: record only when a full-length
+    // take fits as things are.
+    const room = await store.wouldRemove(Math.round(F.keepTakeSec * mic.ctx.sampleRate * 2));
+    // Only while this same microphone is still on: the recorder asks micflow, and asked with
+    // the microphone off that would open it again.
+    if (rec !== r || micflow.mic !== mic || micflow.state().phase !== 'on' || !['live', 'tone'].includes(mode)) { drop(); return; }
+    if (!room.fits || room.remove.length) { drop('No sound recorded: the space for takes is full.'); return; }
+    const res = await r.start({ play: false });
+    if (!res.ok) drop();
+  }
+  // The recording can end before the review (the first pause releases the microphone):
+  // keep it until there is a line to place it on.
+  function gotSound(t, r) {
+    if (r !== soundRec) { if (t && t.saved && t.saved.ok) soundStore().remove(t.id); return; }
+    waiting = false;
+    got = t && t.saved && t.saved.ok ? t : null;
+    placeSound();
+  }
+  function placeSound() {
+    if (!got || mode !== 'review' || !take) { paint(); return; }
+    const t = got;
+    got = null;
+    const span = audioSpan({ songStart: t.songStart, sampleRate: t.sampleRate, length: t.samples.length }, lineZero, take.cut || 0);
+    if (!span || !playPlan(span, 0, facts.durSec)) { soundStore().remove(t.id); paint(); return; }
+    sound = { id: t.id, samples: t.samples, sampleRate: t.sampleRate, seconds: t.seconds, bytes: t.saved.bytes, span, gain: playbackGain(t.samples), kept: false };
+    paint();
+  }
+  // Starting again or leaving: an unsaved sound goes (only "Save this take" keeps it).
+  function dropSound() {
+    const r = rec;
+    soundRec = null; rec = null; waiting = false;
+    if (r) r.destroy();                           // its take arrives later and is removed (gotSound)
+    if (got) soundStore().remove(got.id);
+    if (sound && !sound.kept) soundStore().remove(sound.id);
+    sound = null; got = null;
+  }
+  function stopPlay() {
+    if (!play) return;
+    const p = play;
+    play = null;
+    try { p.src.stop(); } catch { /* not started */ }
+    p.src.disconnect();
+    stopSweep();
+    paint();
+  }
+  function startPlay() {
+    if (!sound || play || mode !== 'review' || !take) return;
+    stopSweep();
+    let from = cursor !== null && cursor < facts.durSec - 0.25 ? cursor : 0;
+    let plan = playPlan(sound.span, from, facts.durSec);
+    if (!plan) { from = 0; plan = playPlan(sound.span, 0, facts.durSec); }
+    // Made on this press (sound only after a user action) and kept for the next one.
+    playCtx = playCtx && playCtx.state !== 'closed' ? playCtx : new AudioContext();
+    if (playCtx.state === 'suspended') playCtx.resume().catch(() => {});
+    const buf = playCtx.createBuffer(1, sound.samples.length, sound.sampleRate);
+    buf.copyToChannel(sound.samples, 0);
+    const src = playCtx.createBufferSource(), gain = playCtx.createGain();
+    src.buffer = buf;
+    gain.gain.value = sound.gain;
+    src.connect(gain).connect(playCtx.destination);
+    const t0 = playCtx.currentTime + 0.05;
+    src.start(t0 + plan.delaySec, plan.offsetSec);
+    play = { ctx: playCtx, src, t0, from };
+    paint();
+    // The playhead follows the sound's own clock, so the two cannot drift apart.
+    const step = () => {
+      if (!play) return;
+      const sec = from + Math.max(0, playCtx.currentTime - t0);
+      setCursor(sec);
+      if (sec >= facts.durSec) { stopPlay(); return; }
+      sweep = requestAnimationFrame(step);
+    };
+    sweep = requestAnimationFrame(step);
+  }
+  playBtn.addEventListener('click', () => (play ? stopPlay() : startPlay()));
 
   function stop() {
     if (!['live', 'paused', 'lost', 'tone'].includes(mode)) return;
     if (tone) tone.stop();
+    if (rec) { rec.stop('stop'); rec = null; }      // releases the microphone in this turn too
     micflow.stop();
     shell.setBusy(null);
     pv.stage.stop();
-    const pts = trimTake(pv.stage.points(), F.keepTakeSec);
+    const all = pv.stage.points();
+    const pts = trimTake(all, F.keepTakeSec);
     facts = takeFacts(pts, config);
     take = facts ? pts : null;
+    // What trimming cut off the front, so the sound can be placed on the kept line.
+    if (take) take.cut = all[all.length - 1].t - pts[pts.length - 1].t;
     if (sessions && facts) {
       sessions.result('freesing', { sec: facts.durSec, facts: { lowMidi: facts.lowMidi, highMidi: facts.highMidi, steadyMidi: facts.steady ? facts.steady.midi : null, steadySec: facts.steady ? facts.steady.sec : null } });
     }
@@ -233,7 +407,9 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     if (take) {
       applyView();
       pv.stage.showTake(take);
+      placeSound();
     } else {
+      dropSound();
       // Nothing to review: say so and offer the start again, rather than an empty chart.
       mode = 'idle';
       pv.clear();
@@ -289,6 +465,7 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     // Each time the microphone is opened its clock starts again; a take must not run
     // backwards, so later readings are shifted to follow the last one (with a visible gap).
     if (rebase) { tOffset = lastT === null ? -frame.t : lastT + 0.5 - frame.t; rebase = false; }
+    if (lineZero === null) lineZero = frame.t;   // the microphone-clock time of line time 0
     const t = frame.t + tOffset;
     lastT = t;
     pv.push({ ...frame, t }, level);
@@ -381,6 +558,7 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     setCursor(((e.clientX - r.left - config.stage.gutterPx) / plotW) * facts.durSec);
   });
   watchBtn.addEventListener('click', () => {
+    stopPlay();
     stopSweep();
     const t0 = performance.now();
     const step = (ms) => {
@@ -395,7 +573,9 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     const ok = !!store && saveTake(store, {
       id: `free-${Date.now()}`, savedAt: new Date().toISOString(), kind: 'free', targetMidi,
       cleanupWasOn: micflow.cleanupWasOn(), facts, points: packTake(take, F.playbackHz),
+      audioId: sound ? sound.id : null, audioStartSec: sound ? Number(sound.span.startSec.toFixed(3)) : null,
     }, F.maxSavedTakes);
+    if (ok && sound) sound.kept = true;
     if (ok) { toast('Saved'); saveBtn.hidden = true; saveWhy.textContent = ''; } else saveWhy.textContent = 'Could not save: this browser’s storage is full or blocked.';
   });
 
@@ -404,12 +584,14 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     // Esc pauses whatever is sounding: a reference note over a live take has the microphone
     // open too, and until 2026-10-12 the first Esc did nothing there.
+    if (e.key === 'Escape') stopPlay();          // the review's playback stops too
     if (e.key === 'Escape') { endToneOverTake(); if (mode === 'live') { pause(); primary.focus(); } }
     if (mode === 'review' && take && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
       const t = e.target;
       // Arrow keys belong to a focused switch or slider first.
       if (t instanceof HTMLElement && (t.closest('[role="radiogroup"]') || /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))) return;
       e.preventDefault();
+      stopPlay();
       stopSweep();
       setCursor((cursor ?? 0) + (e.key === 'ArrowRight' ? 1 : -1));
     }
@@ -432,6 +614,7 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
   // microphone again (bugs.md 31).
   const onHidden = (e) => {
     if (e.type === 'visibilitychange' && !document.hidden) return;
+    stopPlay();
     endToneOverTake();
     pause();
   };
@@ -450,10 +633,16 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
 
   return {
     start, stop,
-    state: () => ({ mode, targetMidi, facts }),
+    state: () => ({
+      mode, targetMidi, facts, playing: !!play, cursor,
+      sound: sound ? { seconds: sound.seconds, bytes: sound.bytes, startSec: sound.span.startSec, endSec: sound.span.endSec } : null,
+    }),
     setTarget,
     view: pv,
     destroy() {
+      stopPlay();
+      dropSound();
+      if (playCtx) playCtx.close().catch(() => {});
       stopSweep();
       clearTimeout(restTimer);
       if (tone) tone.stop();

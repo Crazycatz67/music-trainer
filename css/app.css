@@ -254,6 +254,11 @@ main > * + * { margin-top: var(--s3); }
 .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
 .action-main { display: flex; align-items: center; gap: var(--s3); }
 .facts { min-height: 1.25rem; font: var(--t-small); color: var(--muted); }
+/* Free sing review: Play/Pause of the recorded take. A fixed width so the label swap
+   (Play / Pause) does not shift the buttons after it while the playhead moves. */
+.free-play { min-width: 7.5em; justify-content: center; }
+.sound-line { flex-basis: 100%; margin: 0; min-height: 1.25rem; }
+.sound-line:empty { display: none; }
 /* One row at 1216 px and wider (Lower · 12 notes · Higher · Play it · Clear); it wraps
    between the parts, and only in a very narrow window inside the strip. */
 .aim-panel { padding: var(--s4); }

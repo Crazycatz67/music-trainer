@@ -15,6 +15,8 @@
 //                                              no address at all -> the home route
 //   createSettings({ storage, defaults?, key? }) -> { get(k), all(), set(k, v),
 //       subscribe(fn) -> unsubscribe, erase() }
+//   eraseSavedDatabases({ indexedDB? }) -> Promise<names deleted>: the song and take databases
+//       ("Erase my data"). Never throws; a database another tab holds open is still asked to go.
 //       Saved as JSON under one key. Unreadable or missing storage falls back to the
 //       defaults and keeps working in memory (nothing throws).
 //   openSheet({ title, body, closable = true, onClose?, className? }) -> { el, body, close(value) }
@@ -57,7 +59,8 @@
 import { SETTINGS_DEFAULTS } from './config.js';
 import { readOwnVoice } from './ownvoicekey.js';
 import { useOwnVoice } from '../synth.js';
-import { HOME_ROUTE, NUMBER_ROUTES, backOf, namesOf } from './skyroutes.js';
+import { HOME_ROUTE, NUMBER_ROUTES, backOf, namesOf, screenOwnsKey } from './skyroutes.js';
+import { SONG } from './song/config.js';
 
 // ---------------------------------------------------------------- DOM helpers and icons
 
@@ -185,6 +188,22 @@ export function createSettings({ storage, defaults = SETTINGS_DEFAULTS, key = `$
       for (const k of Object.keys(defaults)) tell(k);
     },
   };
+}
+
+// The browser databases "Erase my data" also removes (settings.erase covers localStorage only).
+// Both open their databases with onversionchange -> close, so a delete here is not blocked by us.
+export const SAVED_DATABASES = Object.freeze([SONG.takes.dbName, SONG.songs.dbName]);
+export async function eraseSavedDatabases({ indexedDB: idb = globalThis.indexedDB } = {}) {
+  if (!idb) return [];
+  const gone = await Promise.all(SAVED_DATABASES.map((name) => new Promise((ok) => {
+    try {
+      const req = idb.deleteDatabase(name);
+      req.onsuccess = () => ok(name);
+      req.onerror = () => ok(null);
+      req.onblocked = () => ok(name);            // queued: it goes once the other tab lets go
+    } catch { ok(null); }
+  })));
+  return gone.filter(Boolean);
 }
 
 // ---------------------------------------------------------------- sheets, toasts, banners
@@ -530,6 +549,13 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
     const mic = h('div');
     const micSection = sections.get('mic');
     if (micSection) { const c = micSection.render(mic); if (c) cleanups.push(c); } else mic.append(h('p', { class: 'reason' }, 'The microphone is not set up on this page.'));
+    // Sections other screens registered (Songs: the words switch), above "Your data".
+    const registered = [...sections].filter(([id]) => id !== 'mic').map(([id, sec]) => {
+      const box = h('div');
+      const c = sec.render(box);
+      if (typeof c === 'function') cleanups.push(c);
+      return part(id, sec.title, box);
+    });
     const volumeWords = h('p', { class: 'reason' });
     const sayVolume = () => { volumeWords.textContent = `Volume: ${Math.round(settings.get('toneVolume') * 100)} percent`; };
     sayVolume();
@@ -570,12 +596,14 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
             value: settings.get('imagine') !== false, onChange: (v) => settings.set('imagine', v) }),
           switchRow({ label: 'Reward sounds', note: 'A soft answer when a note lands. Only with headphones on, and never while the microphone is judging a note.',
             value: settings.get('rewardSounds'), onChange: (v) => settings.set('rewardSounds', v) })),
+        ...registered,
         part('data', 'Your data',
-          h('p', { class: 'reason' }, 'Settings and saved takes are kept in this browser only.'),
+          h('p', { class: 'reason' }, 'Settings, songs and saved takes are kept in this browser only.'),
           backupHost,
           h('button', { class: 'btn btn-danger', type: 'button', onclick: async () => {
-            if (await confirmSheet({ title: 'Erase everything saved here?', body: 'Your settings and saved takes on this computer will be removed. This cannot be undone.', yes: 'Erase', no: 'Keep my data' })) {
+            if (await confirmSheet({ title: 'Erase everything saved here?', body: 'Your settings, songs and saved takes on this computer will be removed. This cannot be undone.', yes: 'Erase', no: 'Keep my data' })) {
               settings.erase();
+              await eraseSavedDatabases();
               sheet.close();
               toast('Erased');
             }
@@ -672,6 +700,8 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
       if (back && back.esc) { e.preventDefault(); location.hash = back.hash; }
       return;
     }
+    // An open song's digits are its own (jump to a tenth): the places stand aside (spec 3.3).
+    if (screenOwnsKey(current, e.key)) return;
     const jumps = skyHome ? NUMBER_ROUTES : TAB_KEYS.map((k) => `#/${k}`);
     const n = e.key.length === 1 ? '123456789'.indexOf(e.key) : -1;
     if (n >= 0 && n < jumps.length) location.hash = jumps[n];

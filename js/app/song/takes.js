@@ -43,7 +43,10 @@
 //         fields known so far (songId, title, createdAt, sampleRate, songStart, latency,
 //         gaps, fromSec, octave, key); samples: Float32Array, the NEW sound only.
 //     store.finish(id, facts?) -> the same shape; marks it finished and new (isNew)
-//     meta also carries: pinned, isNew, finished, pieces, lines, fromSec, octave, key
+//     meta also carries: pinned, isNew, finished, pieces, lines, fromSec, octave, key, and
+//         kind: 'song' (default, also every take saved before 2026-10-15) | 'free' (a Free sing
+//         take: songId null, js/app/freesing.js). Song lists leave 'free' takes out; they
+//         still share maxBytes, the oldest-first rule, backup and load().
 //     store.unfinished() -> [meta]   interrupted takes (finished false), newest first;
 //         they are in list().takes too
 //     store.remove(id) -> boolean
@@ -138,6 +141,7 @@ export function cleanMeta(raw) {
     pieces: Number.isInteger(raw.pieces) && raw.pieces > 0 ? raw.pieces : 0,
     lines: raw.lines && typeof raw.lines === 'object' ? raw.lines : null,
     fromSec: num(raw.fromSec), octave: num(raw.octave) ?? 0, key: num(raw.key) ?? 0,
+    kind: raw.kind === 'free' ? 'free' : 'song',
   };
 }
 
@@ -221,7 +225,7 @@ export function createTakeStore({ backend, maxBytes = SONG.takes.maxBytes } = {}
         if (metas.some((m) => m.id === take.id)) await backend.remove(take.id);
         for (const m of plan.remove) await backend.remove(m.id);
         const meta = cleanMeta({
-          pinned: take.pinned, isNew: take.isNew, lines: take.lines, fromSec: take.fromSec, octave: take.octave, key: take.key,
+          pinned: take.pinned, isNew: take.isNew, lines: take.lines, fromSec: take.fromSec, octave: take.octave, key: take.key, kind: take.kind,
           id: take.id || `take-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
           songId, title,
           createdAt: take.createdAt || new Date().toISOString(),
@@ -250,7 +254,7 @@ export function createTakeStore({ backend, maxBytes = SONG.takes.maxBytes } = {}
           id: meta.id, songId: meta.songId, title: meta.title, createdAt: meta.createdAt,
           sampleRate: meta.sampleRate, samples, seconds: samples.length / meta.sampleRate,
           songStart: meta.songStart, latency: meta.latency, nudgeMs: meta.nudgeMs,
-          gaps: meta.gaps, endedBy: meta.endedBy, frames: unpackFrames(body.frames),
+          gaps: meta.gaps, endedBy: meta.endedBy, frames: unpackFrames(body.frames), kind: meta.kind,
         };
       } catch {
         return null;

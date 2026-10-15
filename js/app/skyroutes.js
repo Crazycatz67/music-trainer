@@ -31,6 +31,14 @@
 //                camera move (spec section 7, "Other cases")
 //       'back'   the address went to the sky while inside or on the way in: travel back
 //       'none'   the sky already shows it
+//   KEYS                    the keys table of page-layout spec 3.3, one row per key group:
+//                           { keys, sky, reading, stage, library, song } in plain words
+//   screenOwnsKey(route, key) -> boolean   true when the screen on show uses this key itself,
+//       so the shell's app-wide meaning (1 to 5 = the places) must stand aside. Today: the
+//       digits inside an open song (jump to a tenth, 0 = restart). The library does not own
+//       them: 1 to 5 are the places there as everywhere else.
+//   lyreLine(n) -> string | null   line 3 of The Lyre's label while n songs are being got
+//       ready (spec 3.4): 'Getting 1 song ready', 'Getting 2 songs ready'; null for none
 
 import { PLACES } from './skymap.js';
 
@@ -72,6 +80,23 @@ export function frameOf(route) {
   if (!placeOf(route)) return null;
   const stage = route.name === 'sing' || ((route.name === 'practice' || route.name === 'songs') && !!route.param);
   return stage ? 'stage' : 'reading';
+}
+
+// Spec 3.3, kept here so the shell and the screens read one table. Words, not code: the
+// behaviour lives with each screen; screenOwnsKey is the one rule the shell needs from it.
+export const KEYS = Object.freeze([
+  { keys: '1 to 5', sky: 'places', reading: 'places', stage: 'places (not while scoring)', library: 'places', song: 'jump to a tenth (0 = restart)' },
+  { keys: 'Esc', sky: null, reading: 'Back', stage: "the screen's own Pause / Stop", library: 'Back', song: 'Stop; close results; close the end panel' },
+  { keys: 'Space', sky: 'Start', reading: "the screen's primary", stage: 'Start / Stop', library: null, song: 'play / sing' },
+]);
+
+export function screenOwnsKey(route, key) {
+  return !!route && route.name === 'songs' && !!route.param && typeof key === 'string' && /^[0-9]$/.test(key);
+}
+
+export function lyreLine(n) {
+  const k = Math.max(0, Math.floor(Number(n) || 0));
+  return k ? `Getting ${k} ${k === 1 ? 'song' : 'songs'} ready` : null;
 }
 
 export const NUMBER_ROUTES = Object.freeze(PLACES.map((pl) => pl.route));

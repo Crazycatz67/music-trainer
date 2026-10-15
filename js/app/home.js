@@ -124,9 +124,18 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
   try { saved = saved || window.localStorage; } catch { saved = null; }
   const skyNow = startSkyNow(sky, { storage: saved, atHome });
 
+  // The Lyre's line 3 while songs are being got ready (index.html feeds it from the song
+  // service once Songs has been opened); null puts the usual line back.
+  let songsLine = null;
+  const withSongsLine = (states) => (songsLine ? { ...states, songs: songsLine } : states);
+  function setSongsLine(line) {
+    songsLine = line || null;
+    if (!destroyed) sky.setStates(withSongsLine(facts.states));
+  }
+
   function refresh() {
     facts = homeFacts({ plan: plan(), data: sessions.read(), today: sessions.today() });
-    sky.setStates(facts.states);
+    sky.setStates(withSongsLine(facts.states));
     sky.setPrimary({ label: facts.label, onPress: pressStart });
     sky.setToday(facts.today);
     sky.setEarned(earnedSky(facts.rounds).items);
@@ -185,7 +194,7 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
   sky.ready.then(() => { if (!destroyed) onMode(); });
 
   return {
-    sky, refresh,
+    sky, refresh, setSongsLine,
     debug: () => ({ facts, moves: [...moves], skyNow: skyNow.debug() }),
     destroy() {
       destroyed = true;

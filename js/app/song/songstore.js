@@ -390,7 +390,7 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
       let dropped = 0, unavailable = false, metas = [];
       try { ({ metas, dropped } = await read()); } catch { unavailable = true; }
       const tk = await takeList(), counts = new Map();
-      for (const t of tk ? tk.takes : []) counts.set(t.songId, (counts.get(t.songId) || 0) + 1);
+      for (const t of tk ? tk.takes : []) if (t.kind !== 'free') counts.set(t.songId, (counts.get(t.songId) || 0) + 1);
       for (const m of [...metas, ...(await demos())]) {
         const e = entryOf(m, counts, voice);
         if (matches(e, search)) groups[e.group].push(e);
@@ -489,6 +489,7 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
       const titles = new Map([...metas, ...(await demos())].map((m) => [m.id, m.title]));
       const groups = new Map();
       for (const t of tk.takes) {
+        if (t.kind === 'free') continue;     // Free sing takes share the store, not a song's list
         if (!groups.has(t.songId)) groups.set(t.songId, { songId: t.songId, title: titles.get(t.songId) || t.title || 'A song no longer here', takes: [] });
         groups.get(t.songId).takes.push(t);
       }

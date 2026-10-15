@@ -33,7 +33,8 @@
 // through onTake with `saved.ok` false, so the screen can offer "Save as a file now".
 //
 // CONTRACT
-//   createRecorder({ micflow, player, songId?, store?, title?, config?, workletUrl? }) -> recorder
+//   createRecorder({ micflow, player, songId?, store?, title?, config?, workletUrl?, kind? }) -> recorder
+//       kind: 'song' (default) | 'free'; written on every piece (takes.js meta.kind) and on the take.
 //       store: a take store (takes.js). Without one nothing is written and the caller saves.
 //   recorder.start({ stream?, play = true, fromSec? }) -> Promise<{ ok, reason? }>
 //       fromSec: the place the owner chose to start from (kept on the take).
@@ -139,7 +140,7 @@ export async function createCapture(ctx, { chunkFrames = SONG.recorder.chunkFram
   };
 }
 
-export function createRecorder({ micflow, player, songId = null, store = null, title = '', config = SONG, workletUrl } = {}) {
+export function createRecorder({ micflow, player, songId = null, store = null, title = '', config = SONG, workletUrl, kind = 'song' } = {}) {
   if (!micflow || !player) throw new TypeError('createRecorder: micflow and player are required');
   const ctx = player.ctx, R = config.recorder;
   const subs = new Set(), takeSubs = new Set();
@@ -184,7 +185,7 @@ export function createRecorder({ micflow, player, songId = null, store = null, t
     const snap = r.capture.snapshot();
     const fresh = snap.samples.subarray(r.sent);
     const facts = {
-      songId, title, createdAt: r.createdAt, sampleRate: ctx.sampleRate, fromSec: r.fromSec, endedBy: reason,
+      kind, songId, title, createdAt: r.createdAt, sampleRate: ctx.sampleRate, fromSec: r.fromSec, endedBy: reason,
       songStart: songStartOf(r.segment, snap.firstFrame, ctx.sampleRate), latency: latencyOf(r), gaps: snap.gaps,
     };
     const ok = store.appendNow(r.id, facts, fresh.slice(), framesToSong(r.frames.slice(r.framesSent), r.segment), { finished: true });
@@ -202,7 +203,7 @@ export function createRecorder({ micflow, player, songId = null, store = null, t
     r.sent = snap.samples.length;
     r.framesSent = r.frames.length;
     const facts = {
-      songId, title, createdAt: r.createdAt, sampleRate: ctx.sampleRate, fromSec: r.fromSec,
+      kind, songId, title, createdAt: r.createdAt, sampleRate: ctx.sampleRate, fromSec: r.fromSec,
       songStart: songStartOf(r.segment, snap.firstFrame, ctx.sampleRate), latency: latencyOf(r), gaps: snap.gaps,
     };
     // A copy: the piece must not change if the caller's array is reused.
@@ -240,7 +241,7 @@ export function createRecorder({ micflow, player, songId = null, store = null, t
       .then(async (got) => {
         const take = {
           id: r.id,
-          songId, title, fromSec: r.fromSec, saved: null,
+          kind, songId, title, fromSec: r.fromSec, saved: null,
           createdAt: r.createdAt,
           sampleRate: ctx.sampleRate,
           samples: got.samples,
@@ -251,7 +252,7 @@ export function createRecorder({ micflow, player, songId = null, store = null, t
           cleanupOn,
         };
         if (store) {
-          const facts = { songId, title, sampleRate: take.sampleRate, fromSec: take.fromSec, songStart: take.songStart, latency, gaps: take.gaps, endedBy: reason };
+          const facts = { kind, songId, title, sampleRate: take.sampleRate, fromSec: take.fromSec, songStart: take.songStart, latency, gaps: take.gaps, endedBy: reason };
           try {
             if (take.samples.length) {
               flush(r, got);
