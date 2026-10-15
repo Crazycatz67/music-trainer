@@ -26,7 +26,7 @@
 //       gl          sky.js's switch: 'auto' | 'off' | 'soft'
 //       onFrame     (t) => void, right after each dome frame (lab probes only)
 //       home.sky    the sky.js controller;  home.refresh() re-reads the record
-//       home.debug() -> { facts, moves: [the last 20 { to, move }] }
+//       home.debug() -> { facts, moves: [the last 20 { to, move }], skyNow: skynow.js debug() }
 //       home.destroy()
 //   Sets <html data-sky="dome" | "links">: the page's CSS hides its own plain links once the
 //   sky has taken over.
@@ -37,6 +37,7 @@
 
 import { planState } from './daily.js';
 import { createSky } from './sky.js';
+import { startSkyNow } from './skynow.js';
 import { earnedSky, TRAVEL, travelMs } from './skymap.js';
 import { parseRoute, sheetOpen } from './shell.js';
 import { HOME_ROUTE, moveFor, placeOf } from './skyroutes.js';
@@ -116,6 +117,13 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
     onArrive: () => { if (!atHome()) shell.view.querySelector('h1')?.focus({ preventScroll: true }); },
   });
 
+  // The real stars over the owner's city (living-sky spec Part 1). This file already loads
+  // after the first screen is drawn, and the fetch never blocks: a failed or slow load keeps
+  // the made-up sky. Started now so the data usually lands before three.js has drawn a frame.
+  let saved = storage;
+  try { saved = saved || window.localStorage; } catch { saved = null; }
+  const skyNow = startSkyNow(sky, { storage: saved, atHome });
+
   function refresh() {
     facts = homeFacts({ plan: plan(), data: sessions.read(), today: sessions.today() });
     sky.setStates(facts.states);
@@ -178,7 +186,7 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
 
   return {
     sky, refresh,
-    debug: () => ({ facts, moves: [...moves] }),
+    debug: () => ({ facts, moves: [...moves], skyNow: skyNow.debug() }),
     destroy() {
       destroyed = true;
       document.removeEventListener('mt:route', onRoute);
@@ -188,6 +196,7 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onMode);
       unmic();
+      skyNow.stop();
       sky.destroy();
       delete doc.dataset.sky;
     },

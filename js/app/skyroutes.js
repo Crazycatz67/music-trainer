@@ -13,9 +13,14 @@
 //   namesOf(route) -> { name, plain } | null    the strip's two names: the place's themed
 //                           name and its plain words, always both
 //   backOf(route) -> { hash, label, esc } | null    the strip's Back button; null on the sky.
-//       An exercise goes back to The Ladder, everything else to the sky. esc = Esc presses
-//       it: false where Esc is the screen's own Pause (Free sing, every exercise, setup's
-//       range step), so one key never both pauses a take and leaves it.
+//       Exactly one level up (page-layout spec 3.1): an exercise -> The Ladder, one figure ->
+//       Constellations, an open song -> The Lyre, the coach notes -> Tonight, everything
+//       else -> the sky. esc = Esc presses it: false where Esc is the screen's own (Free
+//       sing, every exercise, setup's range step, an open song's Stop), so one key never
+//       both pauses a take and leaves it.
+//   frameOf(route) -> 'reading' | 'stage' | null    the view's frame (index.html sets it as
+//       view[data-frame]): 'stage' where something is sung (Free sing, an exercise, an open
+//       song), 'reading' for lists and pages, null on the sky and unknown routes
 //   NUMBER_ROUTES           keys 1 to 5 -> Tonight, The Ladder, The Open Sky, The Lyre, Your Sky
 //   moveFor({ to, where, place }) -> 'none' | 'glide' | 'fade' | 'back'
 //       to     the route now on screen
@@ -47,11 +52,26 @@ export function namesOf(route) {
   return pl ? { name: pl.name, plain: pl.plain } : null;
 }
 
+const up = (hash, label, esc) => ({ hash, label, esc });
+
 export function backOf(route) {
   if (!placeOf(route)) return null;
-  const exercise = route.name === 'practice' && !!route.param;
-  if (exercise) return { hash: byId('practice').route, label: `Back to ${byId('practice').name}`, esc: false };
+  const { name, param } = route;
+  if (name === 'practice' && param) {
+    // One figure goes back to the figures, not past them to the exercise list.
+    if (/^constellation\/./.test(param)) return up('#/practice/constellation', 'Back to Constellations', false);
+    return up(byId('practice').route, `Back to ${byId('practice').name}`, false);
+  }
+  // Inside a song Esc is its own (Stop, close the results).
+  if (name === 'songs' && param) return up(byId('songs').route, `Back to ${byId('songs').name}`, false);
+  if (name === 'coach') return up(byId('today').route, `Back to ${byId('today').name}`, true);
   return { hash: `#/${HOME_ROUTE}`, label: 'Back to the sky', esc: !ESC_IS_THEIRS.has(route.name) };
+}
+
+export function frameOf(route) {
+  if (!placeOf(route)) return null;
+  const stage = route.name === 'sing' || ((route.name === 'practice' || route.name === 'songs') && !!route.param);
+  return stage ? 'stage' : 'reading';
 }
 
 export const NUMBER_ROUTES = Object.freeze(PLACES.map((pl) => pl.route));

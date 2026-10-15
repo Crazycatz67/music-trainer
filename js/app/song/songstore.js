@@ -35,13 +35,16 @@
 //       vocal   = { channels: [Float32Array, ...], sampleRate } at any rate; stored as above
 //       phrases = [{ t, end }] (phrases.js)
 //   store.addChart(timeline, { fileName? }) -> the same shape (a chart without audio)
-//   store.list({ search?, sort = 'date' | 'name' | 'fit', voice? }) ->
+//   store.list({ search?, sort = 'date' | 'name' | 'fit' | 'difficulty', voice? }) ->
 //       { groups: { mine: [entry], demo: [entry], charts: [entry] }, bytes, dropped, unavailable? }
 //       entry = { id, kind: 'file' | 'demo' | 'chart', group, title, artist, duration, addedAt,
 //                 fileName, bytes, curveId, hasSinger, hasBacking, hasWords, range, fit, takes,
-//                 octave, key, guide, lastSungAt, bestLines, credit, chartId }
+//                 octave, key, guide, lastSungAt, bestLines, credit, chartId, rating }
+//       rating: the song's difficulty at its top level (difficulty.js), one decimal; null for a
+//         song with no written tune (a recording: rated from its traced curve later, slice D5)
 //       search: words that must all appear in the title or artist (case and accents ignored)
-//       sort: 'date' newest first (the default); 'name' A to Z; 'fit' best for `voice` first
+//       sort: 'date' newest first (the default); 'name' A to Z; 'fit' best for `voice` first;
+//         'difficulty' easiest first, songs with no rating last
 //       voice = { lowMidi, highMidi }; fit = songFit(entry, voice), null without a voice
 //       dropped = unreadable records that were removed
 //   store.get(id) -> the entry plus { phrases, words, timeline? } | null
@@ -74,6 +77,7 @@ import { WORD_ROUTES } from './words.js';
 import { fitTimeline } from '../range.js';
 import { resample } from '../analyse/pitchcurve.js';
 import { parseUltraStar } from '../../ultrastar.js';
+import { difficultyOf } from './difficulty.js';
 
 const L = SONG.songs;
 
@@ -315,11 +319,22 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
       hasWords: !!m.words || !!(m.timeline && m.timeline.notes.some((n) => n.lyric)),
       range: m.range, takes: counts.get(m.id) || 0,
       octave: m.octave, key: m.key, guide: m.guide, lastSungAt: m.lastSungAt, bestLines: m.bestLines,
-      credit: m.credit, chartId: m.chartId,
+      credit: m.credit, chartId: m.chartId, rating: ratingOf(m),
       ...(m.analysis ? { analysis: { ...m.analysis } } : {}),
     };
     e.fit = songFit(e, voice);
     return e;
+  }
+  // A tune never changes once stored, so each is rated once (18 demos on every list() otherwise).
+  const ratings = new WeakMap();
+  function ratingOf(m) {
+    if (!m.timeline) return null;
+    if (!ratings.has(m.timeline)) {
+      let r = null;
+      try { const d = difficultyOf(m.timeline); r = d ? d.rating : null; } catch { /* unrated, not unlisted */ }
+      ratings.set(m.timeline, r);
+    }
+    return ratings.get(m.timeline);
   }
   const kept = (id) => typeof id === 'string' && !id.startsWith('demo:');
   async function find(id) {
@@ -383,6 +398,7 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
       const byName = (a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }) || a.artist.localeCompare(b.artist, 'en', { sensitivity: 'base' });
       const order = sort === 'name' ? byName
         : sort === 'fit' ? (a, b) => fitRank(a.fit) - fitRank(b.fit) || byName(a, b)
+        : sort === 'difficulty' ? (a, b) => (a.rating ?? Infinity) - (b.rating ?? Infinity) || byName(a, b)
           // Newest first; demo songs have no date and keep their alphabetical order.
           : (a, b) => (Date.parse(b.addedAt) || 0) - (Date.parse(a.addedAt) || 0) || byName(a, b);
       for (const g of Object.values(groups)) g.sort(order);

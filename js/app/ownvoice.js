@@ -1,10 +1,11 @@
-// ownvoice.js — the singer's own voice as the target tone. From a few seconds of one steady
-// sung note it measures how strong each harmonic is, and hands js/synth.js that list as a
-// `timbre`, so Match and hold can play its note "in your voice" at any pitch.
+// ownvoice.js — the singer's own voice as the reference tone. From a few seconds of one steady
+// sung note it measures how strong each harmonic is, turns that into a tone colour by Hz (a
+// spectral envelope, js/app/ownvoicekey.js) and keeps only that, so every exercise can play
+// its notes "in your voice" at any pitch (Settings > Reference tone > My voice, tone 'mine').
 //
 // Why: most poor singers match their own recorded voice better than a synth tone (Hutchins &
 // Peretz 2012; docs/team-log/reports/2026-10-13-ricky-feature-ideas.md). What is kept is NOT a
-// recording: only up to 12 numbers. Whether a harmonic copy sounds enough like "me" to carry
+// recording, and never will be (owner, 2026-10-15): only 20 [hz, dB] pairs. Whether a harmonic copy sounds enough like "me" to carry
 // the benefit is unproven (the study used recordings) and can only be judged by ear.
 //
 // The top half is PURE and imports in Node (tools/checks/ownvoice.check.mjs).
@@ -32,18 +33,20 @@
 //   result, refused: { ok: false, reason, words }       (nothing is stored)
 //       reason: 'no-note' | 'clipped' | 'unsteady' | 'short' | 'low' | 'noisy'; words is the
 //       plain sentence to show (REFUSALS).
-//   OWNVOICE_KEY   'music-trainer.ownvoice.v1' -> { v: 1, timbre, midi, hnrDb, at }
+//   OWNVOICE_KEY   'music-trainer.ownvoice.v1' -> { v: 2, envelope, midi, hnrDb, at }
 //   readOwnVoice(storage) -> record | null      null for nothing saved, another version, or
-//       anything that is not a playable timbre (never throws)
+//       anything unplayable; a v1 record is converted (js/app/ownvoicekey.js; never throws)
 //   saveOwnVoice(storage, result, nowIso?) -> { saved, record }   record is null when the
-//       result was refused; saved false when storage is full or blocked
+//       result was refused or has no midi; saved false when storage is full or blocked. The
+//       harmonic list itself is not kept: only its envelope (envelopeFromHarmonics at midi).
 //   clearOwnVoice(storage)
-//   noteTimbre(noteSound, record, plain) -> record.timbre when noteSound is 'mine' and there
-//       is a record, else `plain` (a js/synth.js timbre name)
+//   noteTimbre(noteSound, record, plain) -> { envelope } when noteSound is 'mine' and there is
+//       a record, else `plain`. Kept for callers of the old Match and hold choice; the app
+//       now uses timbreFor('mine') (js/synth.js) everywhere.
 //
 // CONTRACT — mountOwnVoice(host, { micflow, shell, settings, storage?, config?, micOptions?,
 //                                  synth, home?, onChange? }) -> part            [browser only]
-//   The "Note sound: Plain / My voice" choice (settings.noteSound) and the "Teach it your
+//   The "Note sound: Plain / My voice" choice (settings.tone 'mine', app-wide) and the "Teach it your
 //   voice" step. `synth` is a function returning a js/synth.js synth (made on the first press);
 //   `home` the note to sing (js/app/range.js homeNote), played first when given.
 //   part.teach() -> Promise<result | null>   null: not started, or cancelled. Only ever call
@@ -59,9 +62,11 @@
 //   Events: 'mt:ownvoice' on document, detail { event, reason?, harmonics? }.
 //       event: start | tone | capture | saved | refused | cancel
 
+import { timbreFor } from '../synth.js';
 import FFT from '../../vendor/fft.js-4.0.4/fft.js';
-import { CONFIG } from './config.js';
-import { OWNVOICE_KEY, OWNVOICE_VERSION, playableTimbre, readOwnVoice } from './ownvoicekey.js';
+import { CONFIG, SETTINGS_DEFAULTS } from './config.js';
+import { midiToHz } from '../notes.js';
+import { OWNVOICE_KEY, OWNVOICE_VERSION, envelopeFromHarmonics, playableEnvelope, playableTimbre, readOwnVoice } from './ownvoicekey.js';
 import { h, icon, segmented } from './shell.js';
 
 // ---------------------------------------------------------------- pure
@@ -210,8 +215,9 @@ const VERSION = OWNVOICE_VERSION;
 const playable = playableTimbre;
 
 export function saveOwnVoice(storage, result, nowIso = new Date().toISOString()) {
-  if (!result || !result.ok || !playable(result.timbre)) return { saved: false, record: null };
-  const record = { v: VERSION, timbre: [...result.timbre], midi: result.midi ?? null, hnrDb: result.hnrDb ?? null, at: nowIso };
+  if (!result || !result.ok || !playable(result.timbre) || !Number.isFinite(result.midi)) return { saved: false, record: null };
+  // The tone colour by Hz and three small numbers: nothing of the audio itself.
+  const record = { v: VERSION, envelope: envelopeFromHarmonics(result.timbre, midiToHz(result.midi)), midi: result.midi, hnrDb: result.hnrDb ?? null, at: nowIso };
   let saved = false;
   try { if (storage) { storage.setItem(OWNVOICE_KEY, JSON.stringify(record)); saved = true; } } catch { /* full or blocked: it still stands for this visit */ }
   return { saved, record };
@@ -221,7 +227,7 @@ export function clearOwnVoice(storage) {
   try { if (storage) storage.removeItem(OWNVOICE_KEY); } catch { /* nothing more to do */ }
 }
 
-export const noteTimbre = (noteSound, record, plain = 'voice') => (noteSound === 'mine' && record && playable(record.timbre) ? record.timbre : plain);
+export const noteTimbre = (noteSound, record, plain = 'voice') => (noteSound === 'mine' && record && playableEnvelope(record.envelope) ? { envelope: record.envelope } : plain);
 
 export const NO_VOICE_YET = 'teach it your voice first.';
 
@@ -256,9 +262,12 @@ export function mountOwnVoice(host, {
   // The choice is built again whenever the record changes: shell.js segmented() fixes which
   // options are off when it is made.
   function paintChoice() {
-    const value = settings.get('noteSound') === 'mine' && record ? 'mine' : 'plain';
+    // The same setting as Settings > Reference tone: "My voice" here is heard in every exercise.
+    // Plain goes back to the default Reference tone only when My voice was on; another pick stays.
+    const value = settings.get('tone') === 'mine' && record ? 'mine' : 'plain';
     choiceSlot.replaceChildren(segmented({
-      label: 'Note sound', value, onChange: (v) => settings.set('noteSound', v),
+      label: 'Note sound', value,
+      onChange: (v) => { if (v === 'mine' || settings.get('tone') === 'mine') { settings.set('toneChosen', true); settings.set('tone', v === 'mine' ? 'mine' : SETTINGS_DEFAULTS.tone); } },
       options: [{ value: 'plain', text: 'Plain' }, { value: 'mine', text: 'My voice', disabled: !record, reason: NO_VOICE_YET }],
     }));
   }
@@ -281,7 +290,7 @@ export function mountOwnVoice(host, {
     }
     bar.hidden = phase !== 'capture';
     const idle = says || (record
-      ? `Your voice is saved as ${record.timbre.length} numbers, not a recording. It is used for the note you copy.`
+      ? `Your voice is saved as its tone colour, ${record.envelope.length} pairs of numbers, not a recording. Reference tone "My voice" plays it.`
       : 'About 4 seconds of one steady note. Only a few numbers are kept, never a recording.');
     if (saysLine.textContent !== idle) saysLine.textContent = idle;
     saysLine.dataset.role = saysRole;
@@ -345,7 +354,8 @@ export function mountOwnVoice(host, {
     record = rec;
     unsaved = !saved;
     // Just taught, so it is switched on: the singer taught it in order to hear it.
-    settings.set('noteSound', 'mine');
+    settings.set('toneChosen', true);
+    settings.set('tone', 'mine');
     emit('saved', { harmonics: result.harmonics });
     end(result, saved ? 'Saved. The note you copy now plays in your voice.' : 'Got it, for this visit: this browser would not save it.');
   }
@@ -410,7 +420,7 @@ export function mountOwnVoice(host, {
     paint();
     told();
     emit('tone');
-    const plain = settings.get('tone') === 'sine' ? 'sine' : 'voice';
+    const plain = timbreFor(settings.get('tone'), record ? record.envelope : null);
     tone = player.play({ midi: home, dur: O.toneSec, timbre: plain, gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
     tone.ended.then(() => new Promise((r) => setTimeout(r, O.toneTailMs))).then(() => {
       if (!stillMine() || phase !== 'tone') return;
@@ -449,7 +459,7 @@ export function mountOwnVoice(host, {
     told();
     return true;
   }
-  const offSettings = settings.subscribe((k) => { if (!reread() && k === 'noteSound') { paintChoice(); told(); } });
+  const offSettings = settings.subscribe((k) => { if (!reread() && k === 'tone') { paintChoice(); told(); } });
   const onBackup = (e) => { if (e.detail && e.detail.type === 'restored') reread(); };
   document.addEventListener('mt:backup', onBackup);
 

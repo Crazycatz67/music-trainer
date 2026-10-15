@@ -1,0 +1,80 @@
+/* tutorial.css — the first-visit tour layer (js/app/tutorial.js). Spec:
+   docs/design/specs/2026-10-15-tutorial.md sections 4 and 8. Colours and sizes come from the
+   kit's tokens; the layer never blocks clicks except on its own card, star lane and pill. */
+
+/* The old "Drag the sky" hint is replaced by the tour's own step 3 while the card is up. */
+body[data-tour] .sky-first { display: none; }
+
+.tour { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+.tour[hidden], .tour [hidden] { display: none !important; }
+
+/* Spotlight: everything but the target dims to 40 %, through a soft-edged radial mask. */
+.tour-dim {
+  position: absolute; inset: 0; background: rgb(0 0 0 / 0.4); pointer-events: none;
+  -webkit-mask-image: radial-gradient(circle at var(--tx, 50%) var(--ty, 50%), transparent calc(var(--tr, 80px) - 12px), #000 calc(var(--tr, 80px) + 24px));
+  mask-image: radial-gradient(circle at var(--tx, 50%) var(--ty, 50%), transparent calc(var(--tr, 80px) - 12px), #000 calc(var(--tr, 80px) + 24px));
+  animation: tour-fade var(--d-slow) var(--ease) both;
+}
+
+/* The card: the kit's sky panel. */
+.tour-card {
+  position: absolute; max-width: 440px; width: calc(100vw - 2 * var(--s4)); box-sizing: border-box;
+  pointer-events: auto; display: flex; flex-direction: column; gap: var(--s3);
+  padding: var(--s5); background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-l); box-shadow: var(--shadow-card);
+  border-top-color: var(--aurora-mid, var(--line));
+  max-height: 50vh; overflow: auto;
+  animation: tour-fade var(--d-slow) var(--ease) both;
+}
+@media (min-width: 760px) { .tour-card { width: 440px; } }
+.tour-card h2 { margin: 0; font: var(--t-h2); }
+.tour-card h2:focus { outline: none; }
+.tour-card h2:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tour-line { margin: 0; font: var(--t-body); }
+.tour-small, .tour-status { margin: 0; font: var(--t-small); color: var(--muted); }
+.tour-status { min-height: 1.5em; }   /* reserved: the card never jumps */
+.tour-top { display: flex; align-items: center; gap: var(--s2); font: var(--t-small); color: var(--muted); }
+.tour-top .tour-voice { margin-left: auto; }
+.tour-dots { display: inline-flex; gap: 6px; }
+.tour-dots span { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--muted); }
+.tour-dots span.on { background: var(--gold); border-color: var(--gold); }
+.tour-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.tour-buttons .btn { min-height: 40px; }
+.tour-buttons .btn-primary { min-height: 44px; }
+
+/* The guide star. --wake goes 0 -> 1 with the held time (nothing jumps back on a breath). */
+.tour-star { position: absolute; left: 0; top: 0; width: 96px; height: 96px; pointer-events: none;
+  transition: transform var(--d-reveal) var(--ease-in-out); }
+.tour-star svg { display: block; }
+.tour-halo { fill: var(--gold-glow); opacity: calc(var(--wake, 0) * 0.45); }
+.tour-core { fill: color-mix(in srgb, var(--gold) calc(var(--wake, 0) * 100%), var(--quiet)); }
+.tour-star[data-state="asleep"] { opacity: 0.6; animation: tour-breathe var(--d-breathe) ease-in-out infinite alternate; }
+.tour-star[data-state="awake"] .tour-halo { fill: var(--gold-glow); }
+.tour-star[data-state="awake"] svg { animation: tour-bloom 600ms var(--ease) 1; }
+[data-theme="dawn"] .tour-core { stroke: var(--gold-ink); stroke-width: 1px; }
+.tour-star-name { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: var(--t-small); color: var(--text); }
+
+/* Step 2: the lane with the target line and its band. */
+.tour-lane { position: absolute; left: 0; top: 0; width: 64px; height: 160px; pointer-events: none; }
+.tour-band { position: absolute; left: 0; right: 0; top: calc(50% - 7px); height: 14px; background: var(--target-wash); }
+.tour-line { }
+.tour-lane .tour-line { position: absolute; left: 0; right: 0; top: calc(50% - 1px); height: 2px; background: var(--target); }
+.tour-lane[data-in="on"] .tour-line { background: var(--good); }
+.tour-line-name { position: absolute; left: 0; top: calc(50% + 6px); font: var(--t-small); color: var(--text); }
+.tour-lane-edge { position: absolute; left: 0; bottom: -1.5em; font: var(--t-small); color: var(--muted); }
+
+/* The paused pill (4.3). */
+.tour-pill { position: absolute; left: var(--s4); bottom: var(--s4); pointer-events: auto;
+  display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s3);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-pill);
+  box-shadow: var(--shadow-card); font: var(--t-small); }
+
+.tour-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+@keyframes tour-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tour-breathe { from { opacity: 0.7; } to { opacity: 1; } }
+@keyframes tour-bloom { 50% { transform: scale(1.2); } }
+
+/* Calm motion and a hidden tab: nothing moves, nothing loops (section 8). */
+.tour[data-calm="on"] *, .tour[data-hidden="on"] * { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .tour * { animation: none !important; transition: none !important; } }

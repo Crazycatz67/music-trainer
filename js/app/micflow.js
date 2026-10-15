@@ -46,7 +46,8 @@
 //   flow.cleanupWasOn() -> boolean       for the note a take carries (spec 10.3)
 //   flow.mic                    the js/mic.js object while open, else null
 //   A microphone turned on from the Settings part is released when Settings closes, unless a
-//       screen is listening to it by then.
+//       screen is listening to it by then or a screen that uses it is open (has an onFrame
+//       listener): there it stays on, ready, until that screen stops or is left.
 //   Hidden or left (visibilitychange to hidden, pagehide): the microphone is released as by
 //       stop(), whichever sheet or screen had it open, and a request still waiting for the
 //       browser's answer is dropped. Nothing opens it again by itself: a screen that wants
@@ -191,6 +192,11 @@ const rowEl = (r) => h('li', { class: 'cleanup-row', dataset: { state: r.state }
 export function createMicFlow({ shell, settings, chipEl, config = CONFIG, startMicImpl = startMic }) {
   const monitor = createSignalMonitor(config.mic);
   const frameSubs = new Set(), stateSubs = new Set(), bannerHosts = new Map();
+  // This flow's own frame listeners (the level check, the Settings part's level bar), so
+  // screenTakesFrames() can tell a screen that uses the microphone from them.
+  const ownFrameSubs = new Set();
+  const ownFrame = (fn) => { ownFrameSubs.add(fn); const off = flow.onFrame(fn); return () => { ownFrameSubs.delete(fn); off(); }; };
+  const screenTakesFrames = () => [...frameSubs].some((fn) => !ownFrameSubs.has(fn));
   let phase = 'off', mic = null, rows = cleanupRows(null), cleanupAck = false, listening = false, problem = null;
   let level = 0, peak = 0, sheet = null, pending = null, ownStream = true, everCleanupOn = false;
   const chipLevel = createEvery(1000 / config.hud.chipLevelHz);
@@ -309,7 +315,7 @@ export function createMicFlow({ shell, settings, chipEl, config = CONFIG, startM
     const cont = primary(['Continue ', h('kbd', { class: 'keycap' }, 'Space')], () => sheet.close(), { disabled: true, 'aria-describedby': 'heard-why' });
     heard.id = 'heard-why';
     let run = 0, done = false, lastLv = -1;
-    stopCheck = flow.onFrame((frame, lv) => {
+    stopCheck = ownFrame((frame, lv) => {
       const pct = Math.round(100 * Math.min(1, Math.sqrt(lv / config.mic.levelFullScaleRms)));
       if (pct !== lastLv) { lastLv = pct; fill.style.transform = `scaleX(${pct / 100})`; }
       if (done) return;
@@ -449,7 +455,7 @@ export function createMicFlow({ shell, settings, chipEl, config = CONFIG, startM
     };
     const offState = flow.subscribe(paint);
     let lastLv = -1;
-    const offFrame = flow.onFrame((_, lv) => {
+    const offFrame = ownFrame((_, lv) => {
       const pct = Math.round(100 * Math.min(1, Math.sqrt(lv / config.mic.levelFullScaleRms)));
       if (pct !== lastLv) { lastLv = pct; fill.style.transform = `scaleX(${pct / 100})`; }
     });
@@ -457,7 +463,11 @@ export function createMicFlow({ shell, settings, chipEl, config = CONFIG, startM
       h('div', { class: 'level' }, h('span', { class: 'level-label' }, 'Mic level'), h('div', { class: 'level-bar' }, fill)),
       list, info, action);
     paint();
-    return () => { offState(); offFrame(); if (openedHere && mic && !listening) flow.stop(); };
+    // Kept on when the screen under Settings uses the microphone (it takes frames, as Match and
+    // hold does before Start): the singer turned it on to be ready for that screen, and closing
+    // Settings turned it straight off again (owner, 2026-10-15, bugs.md 80). That screen's
+    // Stop, leaving it, or the page hidden releases it. Elsewhere (the sky) it goes, as before.
+    return () => { offState(); offFrame(); if (openedHere && mic && !listening && !screenTakesFrames()) flow.stop(); };
   }
 
   const flow = {

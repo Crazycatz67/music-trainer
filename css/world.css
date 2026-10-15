@@ -1,0 +1,181 @@
+/* world.css — one frame and one kit for every screen of the sky app.
+   Spec: docs/design/specs/2026-10-14-page-layout.md section 3.2 (slice S2);
+   the kit pieces come from docs/design/specs/2026-10-12-living-sky.md section 9.
+   Needs css/tokens.css, app.css, sky.css (the --sky-zenith / --sky-horizon tokens), home.css.
+   Load it LAST (after home.css): its .card rule must win over the per-screen radius and
+   padding overrides, which later slices delete from their own files.
+
+   Contents: 1 world tokens · 2 the column (data-frame) · 3 the flat sky (links mode)
+             4 the sky panel (.card) · 5 the constellation rule · 6 star rows
+   Nothing here animates, and nothing puts opacity, a filter or a backdrop-filter over the dome. */
+
+/* ---- 1. world tokens (decoration only: never put bare text on them) ----------------------
+   S5 (skies) moves these into tokens.css and drops the theme-name test. */
+:root,
+[data-theme="dusk"] {
+  --shadow-panel: 0 12px 40px rgba(0, 0, 0, .35);
+  --flat-star: color-mix(in srgb, var(--text) 35%, transparent);
+}
+[data-theme="dawn"] {
+  --shadow-panel: 0 12px 40px rgba(27, 33, 54, .12);
+  --flat-star: color-mix(in srgb, var(--muted) 30%, transparent);
+}
+:root {
+  --aurora-hairline: linear-gradient(to right,
+    transparent,
+    color-mix(in srgb, var(--aurora-mid) 50%, transparent) 30%,
+    color-mix(in srgb, var(--aurora-low) 50%, transparent) 70%,
+    transparent);
+  /* A 5-point star, used by the rule ends and the star rows. */
+  --star-shape: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+/* ---- 2. the column: 960 for reading screens, 1280 for stage screens ----------------------
+   js/app/shell.js writes main#view[data-frame] from frameOf(route) (slice S1). Until it does,
+   a view with no data-frame gets the stage width, which is today's width. The width is the
+   CONTENT width: the side padding sits outside it. */
+main#view {
+  --frame: 1280px;
+  --gutter: var(--s4);
+  max-width: calc(var(--frame) + 2 * var(--gutter));
+  padding-inline: var(--gutter);
+}
+main#view[data-frame="reading"] { --frame: 960px; }
+main#view[data-frame="stage"] { --frame: 1280px; }
+@media (min-width: 1100px) {
+  main#view { --gutter: var(--s6); }
+}
+
+/* ---- 3. the flat sky: the backdrop when there is no dome (links mode, or the sky failed) -
+   About 24 still dots, 1 to 2 px, tiled 640 x 420, fixed; over the zenith-to-horizon wash.
+   On the sky route itself #sky-root draws its own page, so this only shows behind screens. */
+html:is([data-sky="links"], [data-sky="failed"]):not([data-route="sky"]) body {
+  background-color: var(--sky-horizon, var(--bg));
+  background-image:
+    radial-gradient(1.5px 1.5px at 22px 31px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 97px 188px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(2px 2px at 143px 64px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 201px 322px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 248px 141px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 286px 12px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 331px 247px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(2px 2px at 372px 96px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 409px 371px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 446px 203px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 488px 49px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 523px 288px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(2px 2px at 561px 158px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 604px 392px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 627px 83px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 58px 271px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 119px 398px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 176px 226px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 233px 389px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 314px 176px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 358px 331px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 467px 126px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 542px 352px, var(--flat-star) 50%, transparent 100%),
+    radial-gradient(1px 1px at 16px 147px, var(--flat-star) 50%, transparent 100%),
+    linear-gradient(to bottom, var(--sky-zenith, var(--bg)), var(--sky-horizon, var(--bg)));
+  background-size: 640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px,
+    640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px,
+    640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px,
+    640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px, 640px 420px,
+    100% 100%;
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+/* Words on the flat sky sit on the plate, the same as on the dome. */
+html:is([data-sky="links"], [data-sky="failed"]):not([data-route="sky"]) main#view > .title-row {
+  width: fit-content; max-width: 100%; padding: var(--s1) var(--s3); margin-left: calc(-1 * var(--s3));
+  border-radius: var(--r-m); background: color-mix(in srgb, var(--bg) 88%, transparent);
+}
+
+/* ---- 4. the sky panel: every .card -------------------------------------------------------
+   Solid --surface (never see-through, never a backdrop-filter), radius --r-l, 1 px --line,
+   padding --s5, a 1 px aurora hairline along the top inside edge, the theme's panel shadow.
+   Pressable panels (.card-link) keep their accent border on hover from app.css. */
+.card {
+  background-color: var(--surface);
+  background-image: var(--aurora-hairline);
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  background-position: top left;
+  background-origin: padding-box;
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: var(--s5);
+  box-shadow: var(--shadow-panel);
+}
+/* Figure cards: the picture is the content, so no padding; they keep the radius and hairline. */
+.card.figure-card { padding: 0; }
+
+/* ---- 5. the constellation rule: replaces a divider line inside a panel (one per panel) ---
+   Markup: <hr class="constellation-rule"> (or any block with role="separator").
+   A 1 px dotted --line-strong line with a 4 px star at each end. Decoration only. */
+.constellation-rule {
+  position: relative; display: block; height: 4px; margin: var(--s4) 0; border: 0; padding: 0;
+  background: radial-gradient(circle, var(--line-strong) 0.5px, transparent 1px) center / 4px 1px repeat-x;
+  background-clip: content-box;
+  padding-inline: var(--s2);
+  overflow: visible;
+}
+.constellation-rule::before,
+.constellation-rule::after {
+  content: ""; position: absolute; top: 0; width: 4px; height: 4px;
+  background: var(--line-strong); clip-path: var(--star-shape);
+}
+.constellation-rule::before { left: 0; }
+.constellation-rule::after { right: 0; }
+
+/* ---- 6. star rows: lists on reading screens ------------------------------------------------
+   Markup (builders write the words; the star is decoration, the word carries the state):
+   <ul class="star-rows">
+     <li class="star-row" data-state="none | done | today | now">
+       <span class="star-mark" aria-hidden="true"></span>
+       <span class="star-row-main">Song or step name <small>plain line</small></span>
+       <span class="star-row-word">Not sung yet</span>      (optional trailing: a button or chevron)
+     </li>
+   </ul>
+   States (living-sky 9; the same four looks as The Ladder's stars):
+   none = hollow --line-strong · done = filled --text · today = --gold-fill with a --gold
+   outline · now = an --accent ring. Rows are 48 px or taller; a row that is a link or button
+   gets the hover / focus look of .card-link. */
+.star-rows { list-style: none; margin: 0; padding: 0; }
+.star-rows > * + * { margin-top: 0; }
+.star-row {
+  display: flex; align-items: center; gap: var(--s3);
+  min-height: 48px; padding: var(--s2) var(--s2);
+  border-radius: var(--r-m);
+  color: var(--text);
+}
+.star-row + .star-row { box-shadow: 0 -1px 0 color-mix(in srgb, var(--line) 60%, transparent); }
+:is(a, button).star-row { width: 100%; text-align: left; text-decoration: none; background: none; border: 0; font: inherit; cursor: pointer; transition: background-color var(--d-quick) var(--ease); }
+:is(a, button).star-row:hover { background: var(--raised); }
+:is(a, button).star-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.star-row-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.star-row-main small { font: var(--t-small); color: var(--muted); }
+.star-row-word { flex: 0 0 auto; font: var(--t-small); color: var(--muted); white-space: nowrap; }
+.star-row[data-state="today"] .star-row-word { color: var(--gold); font-weight: 600; }
+
+.star-mark {
+  position: relative; flex: 0 0 auto; width: 20px; height: 20px;
+  background: var(--line-strong); clip-path: var(--star-shape);
+}
+/* none: hollow — a --surface star inset inside the outline star. */
+.star-mark::after {
+  content: ""; position: absolute; inset: 3px;
+  background: var(--surface); clip-path: var(--star-shape);
+}
+.star-row[data-state="done"] .star-mark { background: var(--text); }
+.star-row[data-state="done"] .star-mark::after { content: none; }
+.star-row[data-state="today"] .star-mark { background: var(--gold); }
+.star-row[data-state="today"] .star-mark::after { inset: 2px; background: var(--gold-fill); }
+.star-row[data-state="now"] .star-mark { clip-path: none; background: none; border: 2px solid var(--accent); border-radius: 50%; }
+.star-row[data-state="now"] .star-mark::after { content: none; }
+
+@media (max-width: 479px) {
+  /* Very narrow: the state word drops under the name rather than squeezing it. */
+  .star-row { flex-wrap: wrap; }
+  .star-row-word { flex-basis: 100%; padding-left: calc(20px + var(--s3)); }
+}

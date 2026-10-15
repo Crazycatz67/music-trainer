@@ -26,8 +26,12 @@
 <link rel="stylesheet" href="css/ownvoice.css">
 <link rel="stylesheet" href="css/backup.css">
 <link rel="stylesheet" href="css/coach.css">
+<link rel="stylesheet" href="css/singnow.css">
+<link rel="stylesheet" href="css/grades.css">
 <link rel="stylesheet" href="css/sky.css">
 <link rel="stylesheet" href="css/home.css">
+<link rel="stylesheet" href="css/world.css">
+<link rel="stylesheet" href="css/tutorial.css">
 </head>
 <body>
 <a class="skip-link" href="#view">Skip to the screen</a>
@@ -78,6 +82,7 @@
 <script type="module">
   import { createSettings, initShell, placeholderScreens } from './js/app/shell.js';
   import { createMicFlow } from './js/app/micflow.js';
+  import { mountTour } from './js/app/tutorial.js';
   import { mountFreeSing } from './js/app/freesing.js';
   import { mountMatchHold } from './js/app/exercises/matchhold.js';
   import { mountConstellation } from './js/app/exercises/constellation.js';
@@ -95,6 +100,7 @@
   import { mountCoach, watchRounds } from './js/app/coachcard.js';
   import { createDaily, dailyPlan, mountToday } from './js/app/daily.js';
   import { readSaved, SAVED_KEY } from './js/app/figures.js';
+  import { frameOf } from './js/app/skyroutes.js';
 
   // labs/home-lab.html runs this very page in a frame and hands it a storage of its own and
   // the sky's test switches, so a test run never reads or writes the owner's saved record.
@@ -127,12 +133,35 @@
   };
   // "Set up later" when nothing can be saved (private mode): remembered for this visit.
   let setupPutOff = false;
+  // Song mode (page-layout spec 3.4): the service (song and take stores, analysis jobs, the
+  // word lookup) is made on the first visit to #/songs and kept for the app's life, so a job
+  // started there goes on while the singer practises; each visit mounts a screen over it.
+  // Loaded on that first visit, so a page that never sings songs never fetches song mode.
+  let songMode = null;
+  let moved = false;
+  addEventListener('hashchange', () => { moved = true; }, { once: true });
+  const loadSongMode = () => songMode || (songMode = import('./js/app/singnow.js')
+    .then(async (screen) => ({ screen, service: (await import('./js/app/singnow-service.js')).createSongService({ storage }) })));
+  // Every screen, built here or the shell's own, gets its frame (spec 3.1) on the view before
+  // it is drawn; the sky clears it.
+  const framed = (given) => {
+    const out = {};
+    for (const name of new Set([...Object.keys(placeholderScreens), ...Object.keys(given)])) {
+      const draw = given[name] || placeholderScreens[name];
+      out[name] = (view, ctx) => {
+        const frame = frameOf({ name, param: ctx.param });
+        if (frame) view.dataset.frame = frame; else delete view.dataset.frame;
+        return draw(view, ctx);
+      };
+    }
+    return out;
+  };
   const shell = initShell({
     settings,
     storage,
     // The star dome is the home (owner, 2026-10-12): no top bar, no tabs.
     home: 'sky',
-    routes: {
+    routes: framed({
       // First run (no range measured, setup not put off): Today is replaced by the setup
       // path. Showing either asks for nothing.
       today(view, ctx) {
@@ -234,10 +263,30 @@
         const screen = mountFreeSing(view, { shell, micflow, settings, sessions });
         return () => screen.destroy();
       },
-    },
+      // #/songs is the library, #/songs/<id> one song, opened ready and silent (spec 3.1).
+      // Showing either asks for nothing: the microphone waits for the singer's own press.
+      songs(view, ctx) {
+        let screen = null, left = false;
+        loadSongMode().then(({ screen: mod, service }) => {
+          if (left) return;
+          screen = mod.mountSongs(view, { shell, micflow, settings, storage, service, songId: ctx.param || null, go: (hash) => { location.hash = hash; } });
+          // The shell focuses the new screen's name as it draws; this one arrives a moment later,
+          // so it does the same itself (not on the page's first load: see shell.js show()).
+          const h1 = view.querySelector('h1');
+          if (moved && h1) h1.focus({ preventScroll: true });
+        }).catch((err) => {
+          if (left) return;
+          console.error(err);
+          view.append(Object.assign(document.createElement('p'), { className: 'reason', textContent: 'Songs could not be loaded. Reload the page to try again.' }));
+        });
+        // Leaving before the module arrived must not mount a screen nobody sees.
+        return () => { left = true; if (screen) screen.destroy(); };
+      },
+    }),
   });
   // Nothing here opens the microphone: micflow waits for a press on a screen.
   micflow = createMicFlow({ shell, settings, chipEl: document.getElementById('mic-chip') });
+  mountTour({ shell, micflow, settings }).start();
   watchRounds(shell.view);
   shell.start();
 

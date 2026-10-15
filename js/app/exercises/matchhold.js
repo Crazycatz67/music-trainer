@@ -80,13 +80,13 @@
 //
 // Not built here (later items): the first-time intro card with its "Keep going" tick, Blind.
 
-import { createSynth } from '../../synth.js';
+import { createSynth, timbreFor } from '../../synth.js';
 import { exercises } from '../../timeline.js';
 import { CONFIG } from '../config.js';
 import { createHintGate, createPitchView } from '../hud.js';
 import { createHoldGate, createRimRing, drawHoldRing, drawKindleStar, heldText, smoothTowards, starRadius } from '../holdring.js';
 import { createEvery, SIGNAL_PROBLEMS, WORDS as MIC_WORDS } from '../micflow.js';
-import { mountOwnVoice, noteTimbre } from '../ownvoice.js';
+import { mountOwnVoice } from '../ownvoice.js';
 import {
   answerPlan, canChime, chimePlan, createRewardLayer, flyStar, glowLevel, LOOK_WORDS, nextRun, playAnswer, playChime,
   rewardTier, soundGuard, spreadOf, starLabel, starLook, starSvg,
@@ -583,11 +583,11 @@ export function mountMatchHold(view, {
     const waitMs = quietUntilMs - nowMs;
     const play = () => {
       if (dead || mine !== seq) return;
-      // The target note only: "My voice" is the singer's own harmonics at the target's
-      // pitch; rewards and every other screen keep the plain tones.
-      const plain = settings.get('tone') === 'sine' ? 'sine' : 'voice';
-      const timbre = noteTimbre(settings.get('noteSound'), ownVoice.record(), plain);
-      emit('tone', { sound: timbre === plain ? 'plain' : 'mine' });
+      // The target note: with tone 'mine' ("My voice", any screen) it is the singer's own tone
+      // colour, from this screen's record (so a lab's storage counts too); rewards stay plain.
+      const rec = ownVoice.record();
+      const timbre = timbreFor(settings.get('tone'), rec ? rec.envelope : undefined);
+      emit('tone', { sound: typeof timbre === 'object' ? 'mine' : 'plain' });
       tone = synth.play({ midi: round.state().targetMidi, dur: M.toneSec, timbre, gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
       const open = () => {
         if (dead || mine !== seq) return;
@@ -925,11 +925,17 @@ export function mountMatchHold(view, {
     if (e.key === 'Escape' && !paused) { pause(); if (paused) primary.focus(); }
     if ((e.key === 'r' || e.key === 'R') && !e.repeat) replay();
   };
+  // Was the microphone still open when the first sheet came up (the level check keeps it)?
+  // Sheets stack, and one closing over another fires 'open' again: only the first counts.
+  let sheetUp = false, micOverSheet = false;
   const onSheet = (e) => {
-    if (e.detail.open) pause();
+    if (e.detail.open) { pause(); if (!sheetUp) micOverSheet = !!micflow.mic; sheetUp = true; return; }
+    sheetUp = false;
     // The level check is over: paused means the microphone is off. Not while Resume is
-    // opening it (its own sheets close on the way).
-    else if (paused && !reopening && micflow.mic) micflow.stop();
+    // opening it (its own sheets close on the way), and not when the singer turned it on in
+    // that sheet (Settings > Turn on microphone): that press asked for it (bugs.md 80).
+    if (paused && !reopening && micflow.mic && micOverSheet) micflow.stop();
+    micOverSheet = false;
   };
   // Hidden or left: the round waits, paused, and only a press on Resume opens the
   // microphone again (bugs.md 31).

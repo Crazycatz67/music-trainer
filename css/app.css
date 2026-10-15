@@ -269,7 +269,7 @@ main > * + * { margin-top: var(--s3); }
 .note-key:disabled { color: var(--quiet); border-color: var(--line); cursor: default; }
 
 .today-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--s5); }
-.card-session { grid-column: span 8; border-radius: var(--r-l); padding: var(--s6); }
+.card-session { grid-column: span 8; }   /* radius and padding: the sky panel (css/world.css) */
 .card-session > * + * { margin-top: var(--s4); }
 .today-side { grid-column: span 4; grid-row: span 2; display: flex; flex-direction: column; gap: var(--s5); }
 .shortcuts { grid-column: span 8; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); }

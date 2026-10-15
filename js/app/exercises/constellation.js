@@ -39,7 +39,7 @@
 // Not built here (slice 2): the dome, "in one breath", Blind, the star store. Settings'
 // "Meter only" view is not offered on this screen: the field is the exercise.
 
-import { createSynth } from '../../synth.js';
+import { createSynth, timbreFor } from '../../synth.js';
 import { exercises } from '../../timeline.js';
 import { CONFIG } from '../config.js';
 import { createFigureField } from '../figurefield.js';
@@ -181,7 +181,7 @@ export function mountConstellation(view, {
 
   const midis = () => semis.map((s) => home + s + round.state().octaveSemis);
   const targetMidi = () => midis()[round.state().index];
-  const timbre = () => (settings.get('tone') === 'sine' ? 'sine' : 'voice');
+  const timbre = () => (timbreFor(settings.get('tone')));
   const toneGain = () => 0.5 * settings.get('toneVolume');
 
   // ---- the page
@@ -823,11 +823,17 @@ export function mountConstellation(view, {
     if (e.key === 'Escape' && !paused) { pause(); if (paused) primary.focus(); }
     if ((e.key === 'r' || e.key === 'R') && !e.repeat) { if (e.shiftKey) replayShape(); else replay(); }
   };
+  // Was the microphone still open when the first sheet came up (the level check keeps it)?
+  // Sheets stack, and one closing over another fires 'open' again: only the first counts.
+  let sheetUp = false, micOverSheet = false;
   const onSheet = (e) => {
-    if (e.detail.open) pause();
+    if (e.detail.open) { pause(); if (!sheetUp) micOverSheet = !!micflow.mic; sheetUp = true; return; }
+    sheetUp = false;
     // The level check is over: paused means the microphone is off. Not while Carry on is
-    // opening it (its own sheets close on the way).
-    else if (paused && !reopening && micflow.mic) micflow.stop();
+    // opening it (its own sheets close on the way), and not when the singer turned it on in
+    // that sheet (Settings > Turn on microphone): that press asked for it (bugs.md 80).
+    if (paused && !reopening && micflow.mic && micOverSheet) micflow.stop();
+    micOverSheet = false;
   };
   // Hidden or left: the take waits, paused, and only a press on Carry on opens it again.
   const onHidden = (e) => { if (e.type === 'pagehide' || document.hidden) pause(); };

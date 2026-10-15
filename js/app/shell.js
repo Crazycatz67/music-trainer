@@ -56,6 +56,7 @@
 
 import { SETTINGS_DEFAULTS } from './config.js';
 import { readOwnVoice } from './ownvoicekey.js';
+import { useOwnVoice } from '../synth.js';
 import { HOME_ROUTE, NUMBER_ROUTES, backOf, namesOf } from './skyroutes.js';
 
 // ---------------------------------------------------------------- DOM helpers and icons
@@ -136,12 +137,28 @@ export function parseRoute(hash, { home = 'today' } = {}) {
 
 export const STORAGE_PREFIX = 'music-trainer.';
 
+// Reference tone 'mine' ("My voice"): every screen asks timbreFor (js/synth.js), which asks
+// this at each note. Read fresh each time, so a new capture, "Erase everything" or a restore
+// is heard on the next note with no events to wire. A few hundred bytes of JSON: cheap.
+useOwnVoice(() => {
+  try { const r = readOwnVoice(globalThis.localStorage); return r ? r.envelope : null; } catch { return null; }
+});
+
 export function createSettings({ storage, defaults = SETTINGS_DEFAULTS, key = `${STORAGE_PREFIX}settings.v1` } = {}) {
   let values = { ...defaults };
   try {
     const saved = JSON.parse((storage && storage.getItem(key)) || 'null');
     // Only keys we know: a stale or hand-edited entry cannot plant a setting.
     if (saved && typeof saved === 'object') for (const k of Object.keys(defaults)) if (k in saved) values[k] = saved[k];
+    // 'voice', 'soft' and then the sung "oo" were the default and every save writes all
+    // values, so a saved one that was never picked in Settings moves once to the default, now
+    // the real recorded "oo" (owner, 2026-10-15). 'sine' stays; so does anything picked
+    // (toneChosen).
+    if (saved && typeof saved === 'object' && ['voice', 'soft', 'sung'].includes(saved.tone) && !saved.toneChosen && 'toneChosen' in defaults && defaults.tone === 'oohs') values.tone = 'oohs';
+    // "Note sound: My voice" was Match and hold's alone (noteSound); it is now the Reference tone
+    // 'mine' in every exercise (owner, 2026-10-15). Moved once: noteSound is no longer a
+    // setting, so the next save drops it.
+    if (saved && typeof saved === 'object' && saved.noteSound === 'mine' && !('noteSound' in defaults) && 'tone' in defaults) { values.tone = 'mine'; if ('toneChosen' in defaults) values.toneChosen = true; }
   } catch { /* unreadable: start from the defaults */ }
   const subs = new Set();
   const save = () => { try { if (storage) storage.setItem(key, JSON.stringify(values)); } catch { /* full or blocked: keep going in memory */ } };
@@ -532,17 +549,23 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
             options: [{ value: 'line', text: 'Scrolling line' }, { value: 'meter', text: 'Meter only' }] }),
           segmented({ label: 'Note names', value: settings.get('noteNames'), onChange: (v) => settings.set('noteNames', v),
             options: [{ value: 'letters', text: 'C D E' }, { value: 'solfege', text: 'Do Re Mi' }] })),
+        // The share-alike licences ask for this credit wherever the data is shown (living-sky
+        // spec section 1); the sky's own settings (city, constellation lines) will join it here.
+        part('sky', 'Sky',
+          h('p', { class: 'reason' }, 'Star data: HYG database (CC BY-SA 4.0). Constellation lines: Stellarium (CC BY-SA).'),
+          // FluidR3_GM is MIT upstream and CC BY 3.0 on the mirror: credit where the sound is
+          // chosen as well as in vendor/samples/voice-oohs/CREDITS.md.
+          h('p', { class: 'reason settings-credit-samples' }, 'Voice samples: FluidR3_GM (Frank Wen), via midi-js-soundfonts.')),
         part('sound', 'Sound',
-          segmented({ label: 'Reference tone', value: settings.get('tone'), onChange: (v) => settings.set('tone', v),
-            options: [{ value: 'voice', text: 'Voice-like' }, { value: 'sine', text: 'Plain' }] }),
+          // "My voice" (tone 'mine', every exercise) once a voice is taught; until then 'mine'
+          // plays the sung "oo" (timbreFor), so that is what is shown as picked.
+          segmented({ label: 'Reference tone', value: settings.get('tone') === 'mine' && !ownVoice ? 'sung' : settings.get('tone'), onChange: (v) => { settings.set('toneChosen', true); settings.set('tone', v); },
+            options: [{ value: 'oohs', text: 'Real voice (oohs)' }, { value: 'sung', text: 'Sung "oo"' }, { value: 'soft', text: 'Soft synth' }, { value: 'voice', text: 'Voice-like' }, { value: 'sine', text: 'Plain' },
+              ...(ownVoice ? [{ value: 'mine', text: 'My voice' }] : [])] }),
+          ownVoice ? null : h('p', { class: 'reason settings-myvoice' }, 'My voice: sing one "oo" for a few seconds in Match and hold ("Teach it your voice"), and every exercise can play its notes in your own tone colour. Only the colour is kept, never a recording.'),
           h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Reference tone volume'),
             h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(settings.get('toneVolume')),
               oninput: (e) => { settings.set('toneVolume', Number(e.target.value)); sayVolume(); } }), volumeWords),
-          // "My voice" can be chosen once Match and hold has been taught it (ownvoice.js).
-          segmented({ label: 'Note sound in Match and hold', value: settings.get('noteSound') === 'mine' && ownVoice ? 'mine' : 'plain',
-            onChange: (v) => settings.set('noteSound', v),
-            options: [{ value: 'plain', text: 'Plain' },
-              { value: 'mine', text: 'My voice', disabled: !ownVoice, reason: 'teach it your voice first, in Match and hold.' }] }),
           switchRow({ label: 'Pause to imagine the note', note: 'A short silent moment after the note, to hear it in your head.',
             value: settings.get('imagine') !== false, onChange: (v) => settings.set('imagine', v) }),
           switchRow({ label: 'Reward sounds', note: 'A soft answer when a note lands. Only with headphones on, and never while the microphone is judging a note.',

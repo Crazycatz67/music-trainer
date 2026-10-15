@@ -58,13 +58,14 @@
 //
 // Not built here: the Blind switch on Match and hold / Four-note patterns, the intro card.
 
-import { createSynth } from '../../synth.js';
+import { createSynth, timbreFor } from '../../synth.js';
 import { CONFIG } from '../config.js';
 import { createPitchView } from '../hud.js';
 import { createEvery, SIGNAL_PROBLEMS, WORDS as MIC_WORDS } from '../micflow.js';
 import { canChime, playChime, starSvg } from '../rewards.js';
 import { confirmSheet, h, icon, sheetOpen, STORAGE_PREFIX } from '../shell.js';
 import { displayNote, lanesFor, layout, verdict, voicePieces } from '../stage.js';
+import { isLightColour } from '../aurora.js';
 import { roundTargets, spaceActs } from './matchhold.js';
 
 // ---------------------------------------------------------------- pure
@@ -389,6 +390,7 @@ export function mountEyesClosed(view, {
       target: g('--target'), wash: parseFloat(g('--a-target-wash')) || 0.18, good: g('--good'), close: g('--close'), off: g('--off'),
       font: g('--font-ui') || 'system-ui',
     };
+    tokens.light = isLightColour(tokens.stage) ?? false;
   }
   function drawPlate(k) {
     const box = pv.stage.el.getBoundingClientRect();
@@ -410,7 +412,12 @@ export function mountEyesClosed(view, {
       ctx.strokeStyle = lab.isC ? T.lineStrong : T.line;
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(G.plotX, Math.round(lab.y) + 0.5); ctx.lineTo(width, Math.round(lab.y) + 0.5); ctx.stroke();
-      if (lab.named && G.laneH >= 10) { ctx.fillStyle = T.quiet; ctx.fillText(displayNote(lab.midi, settings.get('noteNames')).text, 6, lab.y); }
+      // As the live stage: right-aligned at its gutter, none under the "Your line" chip or cut at the bottom.
+      if (lab.named && G.laneH >= 10 && lab.y >= 40 && lab.y <= height - 12) {
+        ctx.fillStyle = T.quiet; ctx.textAlign = 'right';
+        ctx.fillText(displayNote(lab.midi, settings.get('noteNames')).text, G.plotX - 8, lab.y);
+        ctx.textAlign = 'left';
+      }
     }
     // The band: the in-tune width around the target, as on the live stage.
     const half = config.verdict.inTuneCents / 100, top = G.yOfMidi(target + half), bh = 2 * half * G.laneH;
@@ -428,7 +435,7 @@ export function mountEyesClosed(view, {
     for (const piece of voicePieces(pts, config.stage)) {
       if (piece.dot || piece.to === piece.from) {
         const p = pts[piece.from];
-        ctx.fillStyle = col(p.kind); ctx.beginPath(); ctx.arc(G.xOf(p.t), G.yOfMidi(p.midi), 3, 0, 2 * Math.PI); ctx.fill();
+        ctx.shadowBlur = 0; ctx.fillStyle = col(p.kind); ctx.beginPath(); ctx.arc(G.xOf(p.t), G.yOfMidi(p.midi), 3, 0, 2 * Math.PI); ctx.fill();
         continue;
       }
       // One stroke per stretch of one verdict, neighbours sharing their boundary point.
@@ -436,7 +443,11 @@ export function mountEyesClosed(view, {
       for (let i = piece.from + 1; i <= piece.to + 1; i++) {
         if (i <= piece.to && pts[i].kind === pts[a].kind) continue;
         const end = Math.min(i, piece.to);
+        // STYLE: in tune is the 5 px line with a soft glow (the glow in Dusk only).
+        const inTune = pts[a].kind === 'in';
         ctx.strokeStyle = col(pts[a].kind);
+        ctx.lineWidth = inTune ? 5 : 3;
+        ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = inTune && !T.light ? 6 : 0;
         ctx.beginPath();
         for (let j = a; j <= end; j++) { const x = G.xOf(pts[j].t), y = G.yOfMidi(pts[j].midi); if (j === a) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
         ctx.stroke();
@@ -510,7 +521,7 @@ export function mountEyesClosed(view, {
     pv.stage.start();
     paint();
     emit('listen');
-    const plain = settings.get('tone') === 'sine' ? 'sine' : 'voice';
+    const plain = timbreFor(settings.get('tone'));
     tone = synth.play({ midi: round.state().targetMidi, dur: M.toneSec, timbre: plain, gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
     tone.ended.then(() => new Promise((r) => setTimeout(r, M.toneTailMs))).then(() => {
       if (dead || mine !== seq) return;

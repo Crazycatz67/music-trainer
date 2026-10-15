@@ -47,7 +47,7 @@
 // Not built here: the signal banners' "the Sing window restarts once" (4.10), the dome
 // items of 4.9, picking two thumbnails on Progress.
 
-import { createSynth } from '../../synth.js';
+import { createSynth, timbreFor } from '../../synth.js';
 import { CONFIG } from '../config.js';
 import { createEvery, SIGNAL_PROBLEMS, WORDS as MIC_WORDS } from '../micflow.js';
 import { mountPortrait } from '../portrait.js';
@@ -534,7 +534,7 @@ export function mountVoiceCheck(view, {
       setPulses(midis.length, i);
       emit('tone');
       if (!synth) { i++; later(next, dur * 1000); return; }
-      tone = synth.play({ midi: midis[i], dur, timbre: settings.get('tone') === 'sine' ? 'sine' : 'voice', gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
+      tone = synth.play({ midi: midis[i], dur, timbre: timbreFor(settings.get('tone')), gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
       i++;
       tone.ended.then(next);
     };

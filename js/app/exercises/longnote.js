@@ -44,7 +44,7 @@
 //
 // Not built here: a first-time intro card, a picture of the days on Progress.
 
-import { createSynth } from '../../synth.js';
+import { createSynth, timbreFor } from '../../synth.js';
 import { CONFIG } from '../config.js';
 import { createPitchView } from '../hud.js';
 import { createRimRing, drawHoldRing } from '../holdring.js';
@@ -466,7 +466,7 @@ export function mountLongNote(view, {
   async function hear() {
     if (dead || tone || starting || paused || sitting.state().phase === 'sing') return;
     try { synth = synth || createSynth(); } catch { why = 'This browser could not start sound.'; paint(); return; }
-    const mine = synth.play({ midi: note, dur: L.toneSec, timbre: settings.get('tone') === 'sine' ? 'sine' : 'voice', gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
+    const mine = synth.play({ midi: note, dur: L.toneSec, timbre: timbreFor(settings.get('tone')), gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
     tone = mine;
     paint();
     mine.ended.then(() => { if (tone === mine) { tone = null; if (!dead) paint(); } });

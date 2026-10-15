@@ -41,7 +41,7 @@ html[data-route="sky"] .too-small { display: none; }
 /* The places belong to the home screen: off it they never show through a screen, whatever
    the sky is doing (plain links, a context lost and restored). */
 html:not([data-route="sky"]) #sky-root :is(.sky-places, .sky-hint, .sky-first) { display: none; }
-/* No dome to dim behind a screen (plain links): the screen stands on the flat page colour. */
+/* No dome to dim behind a screen (plain links): the screen stands on the flat sky (css/world.css). */
 html:not([data-route="sky"]) #sky-root[data-mode="links"] { display: none; }
 /* Travel in: the address (and so the screen) changes at the start of the journey, but the
    screen cannot be seen or pressed until the camera has landed; it fades in over 200 ms. */

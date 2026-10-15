@@ -28,7 +28,7 @@
 //   micOptions is passed to micflow.request(): { stream } runs the whole screen from a
 //   synthesised stream with no microphone (the stage lab does this).
 
-import { createSynth } from '../synth.js';
+import { createSynth, timbreFor } from '../synth.js';
 import { CONFIG } from './config.js';
 import { createPitchView } from './hud.js';
 import { confirmSheet, h, icon, STORAGE_PREFIX, toast } from './shell.js';
@@ -356,7 +356,7 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     paint();
     if (before === 'review') pv.stage.set({ state: 'tone', target: { midi: targetMidi } }); else applyView();
     pv.stage.start();
-    tone = synth.play({ midi: targetMidi, dur: F.toneSec, timbre: settings.get('tone') === 'sine' ? 'sine' : 'voice', gain: 0.5 * settings.get('toneVolume') });
+    tone = synth.play({ midi: targetMidi, dur: F.toneSec, timbre: timbreFor(settings.get('tone')), gain: 0.5 * settings.get('toneVolume') });
     tone.ended.then(() => new Promise((r) => setTimeout(r, F.toneTailMs))).then(() => {
       tone = null;
       if (mode !== 'tone') return;
@@ -417,10 +417,16 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
   // A reference note over a live take: end it now, or its ending would switch listening
   // back on behind a sheet, or with no microphone.
   const endToneOverTake = () => { if (mode === 'tone' && toneFrom === 'live') { if (tone) tone.stop(); mode = 'live'; } };
+  // Was the microphone still open when the first sheet came up (the level check keeps it)?
+  // Sheets stack, and one closing over another fires 'open' again: only the first counts.
+  let sheetUp = false, micOverSheet = false;
   const onSheet = (e) => {
-    if (e.detail.open) { endToneOverTake(); pause(); }
-    // The level check is over: paused means the microphone is off.
-    else if (mode === 'paused' && micflow.mic) micflow.stop();
+    if (e.detail.open) { endToneOverTake(); pause(); if (!sheetUp) micOverSheet = !!micflow.mic; sheetUp = true; return; }
+    sheetUp = false;
+    // The level check is over: paused means the microphone is off. Not when the singer turned
+    // it on in that sheet (Settings > Turn on microphone): that press asked for it (bugs.md 80).
+    if (mode === 'paused' && micflow.mic && micOverSheet) micflow.stop();
+    micOverSheet = false;
   };
   // Hidden or left: the take waits, paused, and only a press on Resume opens the
   // microphone again (bugs.md 31).

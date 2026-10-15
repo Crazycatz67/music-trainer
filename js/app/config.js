@@ -780,12 +780,14 @@ export const SETTINGS_DEFAULTS = Object.freeze({
   calm: null,                // null = follow the system's reduced-motion setting
   pitchView: 'line',         // 'line' | 'meter'
   rewardSounds: true,
-  tone: 'voice',             // 'voice' | 'sine'
+  tone: 'oohs',              // 'oohs' | 'sung' | 'soft' | 'voice' | 'sine' | 'mine' (timbreFor in
+                             // js/synth.js; 'oohs' = real recorded "oo" samples, 'voice' until they
+                             // load; 'mine' = the singer's own tone colour, 'sung' until one is saved)
+  toneChosen: false,         // true once the singer picks a Reference tone in Settings
   toneVolume: 0.6,
   noteNames: 'letters',      // 'letters' | 'solfege'
   micDeviceId: null,
   micIntroDone: false,
   aurora: true,              // the curtain of light above the voice line (living-sky spec 6.6)
-  noteSound: 'plain',        // 'plain' | 'mine': Match and hold's target note (js/app/ownvoice.js)
   imagine: true,             // "Pause to imagine the note": the silent beat before the ring opens
 });

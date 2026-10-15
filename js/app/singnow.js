@@ -80,6 +80,18 @@
 //   app.jobs       the live objects (player, recorder and transport are null until a song opens)
 //   app.openSong(id), app.closeSong(), app.addFiles(files)   what the buttons call
 //   Also on window.__singnow, for the lab and for looking at a problem in the console.
+//   bootSingNow is now a thin wrapper (page-layout spec 3.4): its own shell + micflow +
+//   createSongService (singnow-service.js) + mountSongs.
+//   mountSongs(view, { shell, micflow, settings, storage, service, songId?, go?, hooks? }) -> app
+//     go(hash)  inside the app (index.html #/songs): Sing in the library and "My songs" in a
+//               song change the address instead, and the shell remounts (spec 3.1). Without
+//               it (sing.html) both stay inside the screen, as before.
+//     songId    open this song ready and silent; one not saved here leaves the library up
+//               with a quiet line
+//     one visit to the screen; app.destroy() leaves in the spec's 6-step order (take ended
+//     and kept, sound ramped out and closed, timers, listeners and micflow hooks off, nodes
+//     outside the view removed, the take's aurora samples handed to service.keepAurora)
+//     and deletes window.__singnow.
 //
 //   ?models=local   (address of the page) reads the model from tools/.cache/models/ on this
 //                   computer instead of the pinned public addresses: for test runs.
@@ -116,197 +128,47 @@ import { letterWords, takeResults, takeWords } from './song/resultsmodel.js';
 import { medallionModel, mountMedallion, wholePercent } from './song/medallion.js';
 import { resultsView } from './song/resultsview.js';
 import { createSynth } from '../synth.js';
+import { createSongService } from './singnow-service.js';
 
 // ---------------------------------------------------------------- numbers and words
-
-const VIEW = Object.freeze({
-  windowSec: 8,            // seconds of song across the stage (spec 5.2)
-  nowFrac: 0.3,            // the now line, from the left
-  padNotes: 3,             // notes shown above and below the song's range
-  trailSec: 4,             // how much of the owner's own line is kept behind the now line
-  // A pitch frame is the middle of a window that ended a moment ago, heard through the
-  // microphone's own delay: the point is drawn this far behind "now".          GUESS
-  voiceLagSec: 0.06,
-  readoutMs: 160,          // the words beside the now line change no faster than this
-  minTakeSec: 1,           // a shorter take is not kept                         GUESS
-});
-// What the old four-step control saved (0 to 3): read once, so a saved choice is kept.
-const OLD_GUIDE_GAINS = Object.freeze([0, 0.25, 0.5, 1]);
-const KEPT_BALANCES = 40;      // the balance is remembered for this many takes
-// The count-in beads on the stage come only where the prompt says "Get ready": before a
-// rest, never before a breath (phrases.js beadTimes has its own, shorter gap for the chart
-// songs' click track).
-const BEAD_CFG = Object.freeze({ ...SONG.phrases, beadGapSec: SONG.phrases.restSec });
-const PREFS_KEY = 'music-trainer.singnow.v1';
-const MODEL_CACHE = 'music-trainer-analyse-models-v1';     // separate.js fetchModelFile's default
-const OCTAVE_WORDS = Object.freeze({
-  '-1': 'You sing an octave below the singer. The song sounds the same.',
-  0: 'You sing where the singer sings.',
-  1: 'You sing an octave above the singer. The song sounds the same.',
-});
-const AUTHORS_WORDS = 'The words of a song belong to their authors. Here they are shown to you for singing, kept only in this browser on this Mac, and never put in this site’s code.';
-export const LOOKUP_NOTICE = 'Looking up words sends the song’s title and artist to lrclib.net. Nothing else leaves this Mac: not the sound, not your voice.';
-const KEPT_HERE = Object.freeze({
-  true: 'Songs are read and kept in this browser only. To find the words, a song’s title and artist are sent to lrclib.net.',
-  false: 'Nothing leaves this Mac. Songs are read and kept in this browser only.',
-});
-const NO_WORDS_YET = 'No words for this song yet. Check the title to look them up.';
-const TAKE_END_WORDS = Object.freeze({
-  hidden: 'You left this window, so recording stopped and the microphone turned off. Your take is kept.',
-  left: 'You left this window, so recording stopped and the microphone turned off. Your take is kept.',
-  'mic-off': 'The microphone went away, so recording stopped. Your take is kept.',
-  limit: 'Takes stop at 15 minutes. This one is kept.',
-  seek: 'The take ended at the jump. It is kept.',
-  pause: 'The take ended at the pause. It is kept.',
-});
-const START_WORDS = Object.freeze({
-  'no-microphone': 'The microphone did not turn on, so nothing is being recorded.',
-  busy: 'A take is already being recorded.',
-  'no-song': 'Open a song first.',
-  stopped: 'Stopped before the recording began.',
-  failed: 'Recording could not start. Try again.',
-});
-
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-// THE verdict of one reading on this page: 'in' | 'close' | 'off' against the singer with
-// whole octaves taken out, 'free' while the singer rests (cents null). The voice line, its
-// light, the readout's colour and the line stars all use it, so an octave under the singer
-// is drawn and counted as the tune sung right (sky spec 1.3). The readout's WORDS still read
-// the raw distance, so it can say "One octave lower than the singer".
-export const kindOf = (cents) => (cents === null || !Number.isFinite(cents) ? 'free' : verdict(foldCents(cents)).kind);
-export const clock = (sec) => { const s = Math.max(0, Math.floor(sec || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-export const lengthWords = (sec) => { const s = Math.max(0, Math.round(sec || 0)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
-// Never a figure finer than 5 seconds (spec 4.2).
-export const aboutLeft = (sec) => {
-  if (!Number.isFinite(sec) || sec === null) return 'working out how long…';
-  if (sec > 90) return `about ${Math.round(sec / 60)} minutes left`;
-  return `about ${Math.max(5, Math.round(sec / 5) * 5)} seconds left`;
-};
-export const rangeWords = (range) => {
-  if (!range) return 'No tune traced';
-  const lo = displayNote(range.lowest), hi = displayNote(range.highest);
-  return lo && hi ? `Runs ${lo.text} to ${hi.text}` : 'No tune traced';
-};
-export const nudgeWords = (ms) => (ms === 0 ? 'as recorded' : ms > 0 ? `${ms} ms later` : `${-ms} ms earlier`);
-export const percent = (level) => Math.round(Math.min(1, Math.max(0, Number(level) || 0)) * 100);
-// The singer's own voice under the backing, in words (the number is shown beside them).
-export const guideWords = (level) => (percent(level) === 0 ? 'Off: true karaoke' : level <= 0.35 ? 'Quiet: helps you find the tune' : level <= 0.7 ? 'Clear: the singer beside the band' : 'Loud: the singer leads');
-// The backing track's level in words. 0 is the owner's "acapella version": the singer alone,
-// but only while the singer is heard: `singer` is what the Singer slider lets through (0 for a
-// song with no separate singer), or Music at 0 would claim a voice that is not playing
-// (design review 2026-10-14, finding 2). Called with one argument it keeps its old answer.
-export const musicWords = (level, singer = 1) => (percent(level) === 0 ? (percent(singer) > 0 ? 'Off: only the singer is heard' : 'Off: nothing will play') : level < 0.5 ? 'Quiet' : level < 1 ? 'Clear' : 'Full');
-// The quick buttons, left to right, under the Music and Singer sliders.
-export const MIX_ORDER = Object.freeze(['music', 'both', 'singer']);
-// Why nothing at all is heard, or '' when something is: Volume at 0, or Music at 0 with the
-// singer off or absent. Volume's row says it, so a silent song is never a silent mystery.
-export function silentWords({ music, singer, volume }, hasGuide = true) {
-  if (percent(volume) === 0) return 'Nothing to hear: Volume is at 0';
-  if (percent(music) > 0 || (hasGuide && percent(singer) > 0)) return '';
-  return hasGuide ? 'Nothing to hear: Music and Singer are at 0' : 'Nothing to hear: Music is at 0 and this song has no separate singer';
-}
-export const gainsWords = (g) => `Song ${percent(g.backing)} % · My voice ${percent(g.voice)} %`;
-// A saved level, whichever version saved it: `level` (0..1) wins, else the old step (0..3).
-export function keptGuide(level, oldStep, fallback) {
-  if (Number.isFinite(level)) return Math.min(1, Math.max(0, level));
-  return Number.isInteger(oldStep) && OLD_GUIDE_GAINS[oldStep] !== undefined ? OLD_GUIDE_GAINS[oldStep] : fallback;
-}
-// Which row of the words band a new current line comes from. 'roll': the line that was
-// waiting under it slides up and grows; 'fade': a cross-fade in place (a jump in the song,
-// the first line, or calm motion); 'stay': nothing changed.
-export const bandMove = (was, now, calm) => (was.cur === now.cur ? 'stay' : !calm && now.cur !== null && was.next === now.cur ? 'roll' : 'fade');
-// How visible the marker under a line is: it eases in after the line starts and out before
-// it ends, so its return to the left is never seen.
-export const markerEnvelope = (t, line, fadeSec) => (!line || !(fadeSec > 0) ? 1 : Math.min(1, Math.max(0, Math.min((t - line.t) / fadeSec, (line.end - t) / fadeSec))));
-// The quiet line under the sliders: what the automatic lookup did for the open song.
-//   words: the song's words (or null); auto: this visit's lookup of it, { state, result }
-//   (or null); on: the "Look up words automatically" switch.
-//   -> { kind: 'credit' (words from LRCLIB or the file: say so, offer Change) |
-//              'looking' | 'none' (no words: the sentence and a title to correct) | 'hidden', text }
-// With the switch off a lookup that found nothing says nothing: that is the press-only page.
-export function autoLine({ words = null, auto = null, on = true } = {}) {
-  if (words) return words.credit && (words.route === 'lookup' || words.route === 'file') ? { kind: 'credit', text: words.credit } : { kind: 'hidden', text: '' };
-  if (auto && auto.state === 'looking') return on || auto.pressed ? { kind: 'looking', text: 'Looking up the words…' } : { kind: 'hidden', text: '' };
-  if (!on && !(auto && auto.pressed)) return { kind: 'hidden', text: '' };
-  if (auto && auto.result && auto.result.status === 'none') return { kind: 'none', text: auto.result.say || NO_WORDS_YET };
-  return { kind: 'none', text: NO_WORDS_YET };
-}
-export const balanceWords = (b) => (b <= 0.02 ? 'Only the song' : b < 0.45 ? 'Mostly the song' : b <= 0.55 ? 'Both at full' : b < 0.98 ? 'Mostly my voice' : 'Only my voice');
-const dateWords = (iso) => { try { return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
-// A line star's name, for its title and for a screen reader: never colour alone.
-export const starLabel = (r, source = 'words') => `${source === 'words' ? 'Line' : 'Phrase'} ${r.i + 1} · ${clock(r.t)} · ${LEVEL_WORDS[r.level] || ''}`;
-// The first words of a line for the end panel, cut with an ellipsis.
-export const firstWords = (text, max = SONG.lineStars.wordsMaxLetters) => { const t = String(text || '').trim(); return t.length <= max ? t : `${t.slice(0, max).trimEnd()}…`; };
-// A take that ended one of these ways may have its shooting star (sky spec 2.5); one ended
-// by leaving the window or by the microphone going away may not.
-export const CELEBRATE_ENDS = Object.freeze(['stop', 'ended', 'limit']);
-// Index of the first entry of a rising list that is >= t.
-function firstAtOrAfter(list, t) {
-  let lo = 0, hi = list.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid] < t) lo = mid + 1; else hi = mid; }
-  return lo;
-}
+// Moved to singnow-words.js (pure, Node-safe); every name this file exported is re-exported.
+import { LOOKUP_NOTICE, kindOf, clock, lengthWords, aboutLeft, rangeWords, nudgeWords, percent, guideWords, musicWords, MIX_ORDER, silentWords, gainsWords, keptGuide, bandMove, markerEnvelope, autoLine, balanceWords, starLabel, firstWords, CELEBRATE_ENDS,
+  VIEW, OLD_GUIDE_GAINS, KEPT_BALANCES, BEAD_CFG, PREFS_KEY, MODEL_CACHE, OCTAVE_WORDS, AUTHORS_WORDS, KEPT_HERE, NO_WORDS_YET, TAKE_END_WORDS, START_WORDS, clamp, dateWords, firstAtOrAfter } from './singnow-words.js';
+export { LOOKUP_NOTICE, kindOf, clock, lengthWords, aboutLeft, rangeWords, nudgeWords, percent, guideWords, musicWords, MIX_ORDER, silentWords, gainsWords, keptGuide, bandMove, markerEnvelope, autoLine, balanceWords, starLabel, firstWords, CELEBRATE_ENDS };
 
 // ---------------------------------------------------------------- the page
 
 export function bootSingNow(root, given = {}) {
   const hooks = { ...(window.__singnowHooks || {}), ...given };
-  const query = new URLSearchParams(hooks.query ?? location.search);
   let storage = null;
   if ('storage' in hooks) storage = hooks.storage;
   else { try { storage = window.localStorage; } catch { /* private mode: this visit only */ } }
 
-  // ---- the shell's pieces: settings sheet, headphones question, microphone flow
+  // ---- the shell's pieces: settings sheet, headphones question, microphone flow.
+  // sing.html owns them; inside the app (#/songs) the app does, and mounts the screen alone.
   const settings = createSettings({ storage });
   const shell = initShell({ settings, routes: {} });
   const micflow = createMicFlow({ shell, settings, chipEl: document.getElementById('mic-chip') });
+  const service = createSongService({ storage, hooks });
+  return mountSongs(root, { shell, micflow, settings, storage, service, hooks });
+}
 
-  // ---- the stores and the analysis queue (nothing is fetched until jobs.go())
-  const takes = createTakeStore({ backend: idbBackend({ name: hooks.takeDb }) });
-  const store = createSongStore({ backend: idbSongBackend({ name: hooks.songDb }), takes });
-  const localModels = query.get('models') === 'local';
-  const modelBase = localModels ? (id) => new URL(`../../tools/.cache/models/${MODELS[id].dir}/`, import.meta.url).href : (id) => MODELS[id].base;
-  const jobs = createJobs({ store, loadTools: hooks.loadTools || ((o) => loadTools({ ...o, modelBase })) });
-  const lookup = createLookup(hooks.fetch ? { fetch: hooks.fetch } : {});
-  // The automatic lookup (autowords.js). One cache for the page: a song is asked about once.
-  const netFetch = hooks.fetch || ((...a) => window.fetch(...a));
-  const wordsCache = createWordsCache({ storage });
+// One visit to the Songs screen (spec 3.4). Everything made here is undone by destroy():
+// the app's micflow and service outlive the screen, so a listener or frame hook left
+// behind would keep a dead screen drawing during the next exercise.
+export function mountSongs(root, { shell, micflow, settings, storage, service, songId = null, go: goTo = null, hooks: given = {} }) {
+  // goTo, not go: the model download below is a hoisted `function go()` in this scope and
+  // would shadow the option (then Sing ran the download instead of opening the song).
+  const hooks = { ...(window.__singnowHooks || {}), ...given };
+  if (storage === undefined) storage = service.storage;
+  const { takes, store, jobs, lookup, netFetch, wordsCache, modelBase, dropped, dropping, autos, prefs, mixFor, savePrefs, savePrefsSoon, flushPrefs } = service;
   // With the switch off nothing is asked: only the words inside the file itself are read.
   const noSearch = async () => ({ ok: false, reason: 'not-found' });
   const noCache = { get() {}, set() {} };
-  const dropped = new Map();      // job id -> { file, tags: Promise } until its song is saved
-  const dropping = new Set();     // song ids whose drop is still naming them and finding their words
-  const autos = new Map();        // song id -> { state: 'looking' | 'done', result, asked: Set(songKey), pressed, tried }
-
-  // guideLevel and volume are 0..1; balances is { takeId: 0..1 }, the newest KEPT_BALANCES.
-  // autoWords: the "Look up words automatically" switch. wordsNoticeSeen: the notice about
-  // it has been read (Got it) or a first lookup has gone out under it.
-  const prefs = { volume: SONG.levels.volume, balances: {}, autoWords: SONG.words.autoLookup, wordsNoticeSeen: false };
-  try { Object.assign(prefs, JSON.parse((storage && storage.getItem(PREFS_KEY)) || '{}')); } catch { /* keep the defaults */ }
-  prefs.guideLevel = keptGuide(prefs.guideLevel, prefs.guide, SONG.levels.guide);
-  delete prefs.guide;
-  prefs.volume = clamp(Number.isFinite(Number(prefs.volume)) ? Number(prefs.volume) : SONG.levels.volume, 0, 1);
-  if (!prefs.balances || typeof prefs.balances !== 'object') prefs.balances = {};
-  // mixes is { songId: { music, singer, volume } }: the three sliders, kept for each song
-  // (owner 2026-10-13). guideLevel and volume above are what the page kept before that,
-  // one pair for every song: they are now only where a song with no mix of its own starts,
-  // and the sliders no longer write them.
-  if (!prefs.mixes || typeof prefs.mixes !== 'object' || Array.isArray(prefs.mixes)) prefs.mixes = {};
-  // The ways to sing, per song: { [songId]: { noLine?, noGuide? } } (grades spec 10.1).
-  if (!prefs.ways || typeof prefs.ways !== 'object' || Array.isArray(prefs.ways)) prefs.ways = {};
-  const mixFor = (id) => songMix(id === null ? null : prefs.mixes[id], { music: SONG.levels.music, singer: prefs.guideLevel, volume: prefs.volume });
-  prefs.autoWords = typeof prefs.autoWords === 'boolean' ? prefs.autoWords : SONG.words.autoLookup;
-  prefs.wordsNoticeSeen = prefs.wordsNoticeSeen === true;
   let noticeGone = prefs.wordsNoticeSeen;
-  // A slider being dragged changes the levels up to 60 times a second; writing the whole
-  // settings record each time is wasted work, so setLevels asks for a save PREFS_SAVE_MS
-  // after the last move, and the slider's own `change` (let go), closing the song and leaving
-  // the page (stopAll) write it at once. Any direct save clears the one waiting.
-  let prefsTimer = 0;
-  const PREFS_SAVE_MS = 300;
-  const savePrefs = () => { clearTimeout(prefsTimer); prefsTimer = 0; try { if (storage) storage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* full or blocked */ } };
-  const savePrefsSoon = () => { clearTimeout(prefsTimer); prefsTimer = setTimeout(savePrefs, PREFS_SAVE_MS); };
-  const flushPrefs = () => { if (prefsTimer) savePrefs(); };
+  // Every document/window listener goes through on(), so destroy() can take each one off.
+  const offs = [];
+  const on = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); offs.push(() => target.removeEventListener(type, fn, opts)); };
 
   // ---- what the screen is showing
   let mode = 'library';
@@ -382,7 +244,7 @@ export function bootSingNow(root, given = {}) {
   const $notice = h('p', { class: 'reason sn-notice', hidden: true });
   const $songs = h('ul', { class: 'sn-songs' });
   const $empty = h('p', { class: 'reason' }, 'No songs yet. Drop one above: your own file, any length up to 12 minutes.');
-  $lib.append(h('h1', { id: 'sn-lib-title' }, 'Sing a song'), $drop, $file, $wordsNote, $need, $notice, $queue, h('h2', null, 'My songs'), $empty, $songs);
+  $lib.append(h('h1', { id: 'sn-lib-title', tabindex: '-1' }, 'Sing a song'), $drop, $file, $wordsNote, $need, $notice, $queue, h('h2', null, 'My songs'), $empty, $songs);
 
   // ---- sing screen
   const $title = h('h1', { id: 'sn-song-title', tabindex: '-1' }, '');
@@ -517,11 +379,11 @@ export function bootSingNow(root, given = {}) {
     btn('btn-secondary btn-small', 'sn-tap-done', 'Finish and keep what is timed', () => finishTap(), 'Done'));
 
   $sing.append(
-    h('div', { class: 'title-row' }, btn('btn-quiet', 'sn-back', 'Back to My songs', () => closeSong(), icon('back', 16), ' My songs'), $title, $artist),
+    h('div', { class: 'title-row' }, btn('btn-quiet', 'sn-back', 'Back to My songs', () => (goTo ? goTo('#/songs') : closeSong()), icon('back', 16), ' My songs'), $title, $artist),
     $banners, $lamp, $live, $stage, $band, $hold,
     h('div', { class: 'sn-scrub-row' }, $tNow, $scrub, $tEnd), $loop, $rest,
     $transport, $primaryWhy, $tapRow, $sound, $review);
-  micflow.mountBanners($banners);
+  const offBanners = micflow.mountBanners($banners);
 
   // A button pressed with the mouse must not keep the focus: Space would press it again
   // instead of being Sing / Pause (design-library lesson: blur buttons).
@@ -612,7 +474,7 @@ export function bootSingNow(root, given = {}) {
           : h('button', { class: 'btn btn-quiet btn-small', type: 'button', onclick: () => jobs.cancel(j.id) }, 'Cancel'));
     }));
   }
-  jobs.on((e) => {
+  const offJobs = jobs.on((e) => {
     if (e.type === 'state') { for (const j of e.state.jobs) if (j.status === 'failed' || j.status === 'cancelled') dropped.delete(j.id); paintQueue(); }
     else if (e.type === 'done') { toast('Added to My songs'); paintLibrary(); afterDrop(e); }
     else if (e.type === 'notice') { $notice.hidden = false; $notice.textContent = e.words; }
@@ -632,7 +494,7 @@ export function bootSingNow(root, given = {}) {
           h('span', { class: 'reason' }, [lengthWords(e.duration), rangeWords(e.range), e.hasWords ? 'has words' : null, e.hasBacking ? null : 'its sound is missing: drop the file again'].filter(Boolean).join(' · ')),
           songBadge(bests, e.id)),
         h('div', { class: 'action-row' },
-          h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'sing' }, disabled: !e.hasBacking, onclick: () => openSong(e.id) }, 'Sing'),
+          h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'sing' }, disabled: !e.hasBacking, onclick: () => (goTo ? goTo(`#/songs/${encodeURIComponent(e.id)}`) : openSong(e.id)) }, 'Sing'),
           h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'rename' }, onclick: () => renameSong(e) }, 'Rename'),
           h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'remove' }, onclick: () => removeSong(e) }, 'Remove')),
         kept.length ? h('ul', { class: 'sn-takes', 'aria-label': `Takes of ${e.title}` }, kept.map((t) => h('li', { class: 'sn-take', dataset: { take: t.id } },
@@ -805,7 +667,7 @@ export function bootSingNow(root, given = {}) {
 
   // "Look up words automatically" joins the shell's Settings sheet when it opens (the
   // sheet is the shell's; this page adds its one part in the same turn, above "Your data").
-  document.addEventListener('mt:sheet', () => {
+  on(document, 'mt:sheet', () => {
     const body = document.querySelector('dialog.sheet-settings[open] .sheet-body, dialog.sheet-settings .sheet-body');
     if (!body || body.querySelector('#settings-words')) return;
     const part = h('section', { class: 'settings-part', id: 'settings-words' }, h('h3', { tabindex: '-1' }, 'Words'),
@@ -823,11 +685,11 @@ export function bootSingNow(root, given = {}) {
   let dragDepth = 0;
   const hasFiles = (e) => !!e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
   const lit = (on) => { $drop.classList.toggle('is-over', on); $dropTitle.textContent = on ? 'Let go to add it' : 'Drop a song here'; };
-  window.addEventListener('dragenter', (e) => { if (mode !== 'library' || !hasFiles(e)) return; dragDepth++; lit(true); });
-  window.addEventListener('dragleave', () => { if (dragDepth > 0 && --dragDepth === 0) lit(false); });
+  on(window, 'dragenter', (e) => { if (mode !== 'library' || !hasFiles(e)) return; dragDepth++; lit(true); });
+  on(window, 'dragleave', () => { if (dragDepth > 0 && --dragDepth === 0) lit(false); });
   // Without this the browser would open the dropped file in place of the page.
-  window.addEventListener('dragover', (e) => { e.preventDefault(); });
-  window.addEventListener('drop', (e) => {
+  on(window, 'dragover', (e) => { e.preventDefault(); });
+  on(window, 'drop', (e) => {
     e.preventDefault();
     dragDepth = 0;
     lit(false);
@@ -841,9 +703,12 @@ export function bootSingNow(root, given = {}) {
   async function ensureAudio() {
     if (!ctx) {
       ctx = new AudioContext({ latencyHint: 'interactive' });
-      let out = ctx.destination;
-      if (hooks.silent) { out = ctx.createGain(); out.gain.value = 0; out.connect(ctx.destination); }
-      outNode = out;      // the page's one way out: the end chime goes through it too
+      // Always one gain on the way out (0 when silent): leaving the screen ramps it down
+      // before closing the context, so the song ends without a click (spec 3.4 step 2).
+      const out = ctx.createGain();
+      out.gain.value = hooks.silent ? 0 : 1;
+      out.connect(ctx.destination);
+      outNode = out;     // the page's one way out: the end chime goes through it too
       player = createPlayer({ audioContext: ctx, destination: out });
       player.setVolume(levels.volume);
       // Pause, however it came about, ends the listening: the microphone is released.
@@ -979,13 +844,13 @@ export function bootSingNow(root, given = {}) {
   // (Settings, Words, the headphones chip) ends the start: it used to be let through, and
   // the song then played, or a take recorded, under that sheet (bugs.md 72).
   const startsOwnSheet = () => { const top = [...document.querySelectorAll('dialog[open]')].pop(); return micStarting && !!ownSheet && !!top && top.classList.contains(ownSheet); };
-  document.addEventListener('mt:sheet', (e) => { if (e.detail && e.detail.open && !startsOwnSheet()) stopAll('stop'); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) stopAll('hidden'); });
-  window.addEventListener('pagehide', () => stopAll('left'));
+  on(document, 'mt:sheet', (e) => { if (e.detail && e.detail.open && !startsOwnSheet()) stopAll('stop'); });
+  on(document, 'visibilitychange', () => { if (document.hidden) stopAll('hidden'); });
+  on(window, 'pagehide', () => stopAll('left'));
   // The page is about to go (reload, close): end a running take now, while a write is
   // still kept (recorder.js), and release the microphone. No question is asked.
-  window.addEventListener('beforeunload', () => stopAll('left'));
-  micflow.subscribe(() => {
+  on(window, 'beforeunload', () => stopAll('left'));
+  const offMicState = micflow.subscribe(() => {
     // The microphone went away during the count (unplugged, refused, the page hidden):
     // the song must not start by itself afterwards.
     if (count && micflow.state().phase !== 'on') { endCount(false); release(); }
@@ -1012,7 +877,7 @@ export function bootSingNow(root, given = {}) {
     c.resolve(ok);
   }
 
-  micflow.onFrame((frame, level) => {
+  const offMicFrame = micflow.onFrame((frame, level) => {
     if (!player || !playing() || !(singing || recActive())) return;
     const t = player.heardTime() - VIEW.voiceLagSec;
     const midi = frame.voiced && Number.isFinite(frame.midi) ? frame.midi : null;
@@ -1093,7 +958,8 @@ export function bootSingNow(root, given = {}) {
   }
   // The scrub bar's width is read here (a resize, a new song), never while a line settles.
   const measureTrack = () => { trackPx = $scrub.clientWidth; };
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { const was = trackPx; measureTrack(); if (was !== trackPx) paintStars(); }).observe($scrub);
+  const sizer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { const was = trackPx; measureTrack(); if (was !== trackPx) paintStars(); }) : null;
+  if (sizer) sizer.observe($scrub);
   function popStar(r) {
     if (shell.calm() || !$pop.animate) return;
     $pop.dataset.level = r.level;
@@ -1262,7 +1128,7 @@ export function bootSingNow(root, given = {}) {
   }
   if (typeof matchMedia === 'function') {
     const mq = matchMedia('(max-width: 899px)');
-    if (mq.addEventListener) mq.addEventListener('change', fitMedal);
+    if (mq.addEventListener) on(mq, 'change', fitMedal);
   }
   // The percent counts up with the ring (spec 4.3): its text only, once a frame.
   function countUp(el, to) {
@@ -2089,8 +1955,8 @@ export function bootSingNow(root, given = {}) {
     }
   }
   readColours();
-  document.addEventListener('mt:theme', () => requestAnimationFrame(readColours));
-  document.addEventListener('mt:calm', () => buildSprites());
+  on(document, 'mt:theme', () => requestAnimationFrame(readColours));
+  on(document, 'mt:calm', () => buildSprites());
   const g = $canvas.getContext('2d');
   let cw = 0, ch = 0;
   function fitCanvas() {
@@ -2527,7 +2393,7 @@ export function bootSingNow(root, given = {}) {
   $scrub.addEventListener('pointerup', endDrag);
   $scrub.addEventListener('pointercancel', () => { dragging = false; });
 
-  document.addEventListener('keydown', (e) => {
+  on(document, 'keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || sheetOpen()) return;
     const el = e.target instanceof HTMLElement ? e.target : null;
     const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
@@ -2581,7 +2447,7 @@ export function bootSingNow(root, given = {}) {
     }
   }, true);
 
-  document.addEventListener('pointerdown', () => { if (end && end.reveal === 'run') finishReveal(); }, true);
+  on(document, 'pointerdown', () => { if (end && end.reveal === 'run') finishReveal(); }, true);
 
   // ================================================================ the handle
 
@@ -2615,8 +2481,89 @@ export function bootSingNow(root, given = {}) {
   };
   window.__singnow = app;
 
+  // Sheets opened while the screen is up are its own (they are modal: nothing else can open
+  // one under them), so leaving closes them.
+  const ownDialogs = new Set();
+  on(document, 'mt:sheet', (e) => {
+    if (!e.detail || !e.detail.open) return;
+    const top = [...document.querySelectorAll('dialog[open]')].pop();
+    if (top) ownDialogs.add(top);
+  });
+
+  // The take's sky for the home's replay (spec 3.4 step 6): its pitched points, at most
+  // 96, kept only when there were 3 s or more of pitched singing. Gaps longer than a
+  // quarter second (a pause, a jump) do not count as singing.
+  function auroraSamples() {
+    let sung = 0;
+    for (let i = 1; i < trail.length; i++) {
+      if (trail[i].midi !== null && trail[i - 1].midi !== null) sung += Math.min(0.25, Math.max(0, trail[i].t - trail[i - 1].t));
+    }
+    const pitched = trail.filter((p) => p.midi !== null);
+    if (sung < 3 || !pitched.length) return null;
+    const n = Math.min(96, pitched.length);
+    return Array.from({ length: n }, (_, k) => {
+      const p = pitched[Math.floor((k * pitched.length) / n)];
+      return { midi: p.midi, lv: p.lv ?? null, kind: p.kind };
+    });
+  }
+
+  // Leaving the screen, in the order of spec 3.4. Asks nothing: a running take is ended
+  // and kept (the take store belongs to the service, so its last write still lands).
+  let destroyed = false;
+  app.destroy = () => {
+    if (destroyed) return;
+    destroyed = true;
+    const samples = recActive() ? auroraSamples() : null;
+    // 1. the take ends and is kept, the count-in is cancelled, the player pauses, the mic goes
+    stopAll('left');
+    // 2. sound out: a 120 ms ramp to 0, then the context closes (no click, no tail)
+    if (ctx) {
+      const c = ctx;
+      try {
+        const g = outNode.gain, now = c.currentTime;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(g.value, now);
+        g.linearRampToValueAtTime(0, now + 0.12);
+      } catch { /* a closed context: nothing is sounding */ }
+      setTimeout(() => { c.close().catch(() => {}); }, 130);
+    }
+    // 3. the stage loop and every timer (prefs were flushed by stopAll)
+    cancelAnimationFrame(raf); raf = 0;
+    stopRest();
+    hideHold();
+    if (end) { clearTimeout(end.timer); end.timer = 0; }
+    flushPrefs();
+    if (shell && typeof shell.setBusy === 'function') shell.setBusy(null);
+    // 4. every listener and micflow hook: the app's micflow outlives the screen
+    for (const off of offs.splice(0)) off();
+    offMicState(); offMicFrame(); offJobs();
+    if (typeof offBanners === 'function') offBanners();
+    if (sizer) sizer.disconnect();
+    // 5. what it put outside the view
+    for (const el of document.querySelectorAll('.sn-streak')) el.remove();
+    delete document.body.dataset.singnow;
+    for (const dlg of ownDialogs) if (dlg.open) dlg.close('close');
+    ownDialogs.clear();
+    $lib.remove(); $sing.remove(); $recPill.remove();
+    if (layer) layer.remove();
+    // 6. the take's sky, memory only, for the home (slice 4)
+    if (samples) service.keepAurora(samples);
+    if (window.__singnow === app) delete window.__singnow;
+  };
+
   paint();
   paintNotice();
   paintLibrary();
+  // A reload or a link to a song that this browser does not keep is not an error: the
+  // library stays up with one quiet line (spec 3.1).
+  if (songId) {
+    store.get(songId).then((entry) => {
+      // Left again before the store answered: a destroyed screen must not load a song.
+      if (destroyed) return;
+      if (entry) return openSong(songId);
+      $notice.textContent = 'That song is not saved in this browser.';
+      $notice.hidden = false;
+    }).catch(() => {});
+  }
   return app;
 }
