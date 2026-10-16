@@ -1,0 +1,61 @@
+/* steps.css — Star steps and Leaps and scales (js/app/exercises/steps.js; spec
+   2026-10-15-patterns-intervals-scales sections 6 and 10). Tokens only, no raw colours: every
+   sky (Dusk, Dawn, Nebula, Midnight) comes through data-tone. The bars and their after-note
+   looks are drawn on the stage canvas (stage.js noteMarks); this file is the frame around them. */
+
+.steps-ex .rb-fit { min-height: 1.25rem; }
+.steps-ex .rb-why { min-width: 16em; }
+.steps-ex .stage { height: clamp(260px, calc(100vh - 520px), 480px); }
+
+/* Speed: a real slider in the title plate (owner taste). Locked while a round runs. */
+.st-speed { display: flex; align-items: center; gap: var(--s2); font: var(--t-small); color: var(--muted); }
+.st-speed-input { width: 9rem; min-height: 44px; accent-color: var(--accent); }
+.st-speed-input:disabled { opacity: 0.5; }
+.st-speed-out { min-width: 9.5em; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* In a row (spec 6.3): an edge glow of 0 / 6 / 12 / 18 px, eased 600 ms each way. */
+.st-stage .stage { transition: box-shadow var(--d-slow, 600ms) var(--ease); }
+.st-stage[data-glow="1"] .stage { box-shadow: 0 0 6px var(--good-wash); }
+.st-stage[data-glow="2"] .stage { box-shadow: 0 0 12px var(--good-wash); }
+.st-stage[data-glow="3"] .stage { box-shadow: 0 0 18px var(--good-wash); }
+
+/* The item strip and, in the same place, the round result: a reserved height so nothing above
+   or below moves when it appears (owner rule: reward moments never jump the layout). */
+.st-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
+  min-height: 6.5rem; padding: var(--s2) var(--s3); border-radius: var(--r-s);
+  opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s;
+}
+.st-strip[data-shown="no"] { opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
+.st-strip-main { display: grid; gap: var(--s2); flex: 1 1 20rem; }
+.st-strip-btns { display: flex; gap: var(--s2); }
+.st-line { font: var(--t-body); color: var(--text); margin: 0; }
+.st-done { font-weight: 600; margin-right: var(--s1); }
+.st-line .chip { margin-left: var(--s2); vertical-align: middle; }
+
+.st-squares { display: flex; flex-wrap: wrap; gap: var(--s1); list-style: none; margin: 0; padding: 0; }
+.st-square {
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--r-s);
+  border: 2px solid var(--line-strong); color: var(--text);
+}
+/* The same four looks as the bars: solid, hatched, outline, dotted (told apart in grey too). */
+.st-square[data-v="in"] { background: var(--good); border-color: var(--good); color: var(--accent-ink); }
+.st-square[data-v="close"] { border-color: var(--close); background: repeating-linear-gradient(45deg, var(--close-wash) 0 4px, transparent 4px 8px); }
+.st-square[data-v="off"] { border-color: var(--off); }
+.st-square[data-v="none"] { border-style: dotted; color: var(--muted); }
+
+/* New best: a gold bloom behind the panel, riding its own fade-in (no second fade). */
+.st-strip[data-best] { box-shadow: 0 0 24px var(--gold-glow); }
+
+@media (max-width: 760px) {
+  .st-speed { flex: 1 1 100%; }
+  .st-speed-input { flex: 1; width: auto; }
+  .steps-ex .rb-why { min-width: 0; }
+}
+@media (max-width: 519px) {
+  .st-squares { max-width: calc(2 * 44px + var(--s1)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-strip, .st-strip[data-shown="no"] { transition-duration: var(--d-base), 0s; }
+  .st-stage .stage { transition: none; }
+}

@@ -56,7 +56,7 @@ import { canChime, chimePlan, playChime, rewardTier } from '../rewards.js';
 import { banner, h, icon, openSheet, sheetOpen, toast } from '../shell.js';
 import { createStage, displayNote } from '../stage.js';
 import {
-  buildPortrait, compareRows, createHeard, dateWords, easyFrom, lastFacts, noteWords, ON_TARGET_GLOSS, planNotes, planTunes,
+  buildPortrait, compareRows, createHeard, dateWords, easyFrom, gainLook, lastFacts, markClear, NORMAL_DAY, noteWords, ON_TARGET_GLOSS, planNotes, planTunes,
   portraitWords, rangeFresh, readPortraits, savePortrait, scoreNote, scoreTune, tuneWords,
 } from '../voicecheck.js';
 import { spaceActs } from './matchhold.js';
@@ -738,7 +738,11 @@ export function mountVoiceCheck(view, {
         return;
       }
       const c = compareRows(against, p, { noteStyle: noteStyle() });
-      compare = { against: against.id, anyGrew: c.anyGrew, grew: c.rows.filter((r) => r.grew).map((r) => r.id) };
+      // The same "clear change" line as Progress (sinceFirst): gold only for a gain bigger
+      // than a normal day's wobble, so tonight and Progress never disagree about a +1.
+      const rows = markClear(c.rows, V);
+      const anyClear = rows.some((r) => r.clear === 'gain');
+      compare = { against: against.id, anyGrew: c.anyGrew, anyClear, grew: rows.filter((r) => r.grew).map((r) => r.id), clear: rows.filter((r) => r.clear === 'gain').map((r) => r.id) };
       // One scale for both, so the horizons can be compared by eye.
       const scale = { low: Math.min(against.range.lowMidi, p.range.lowMidi), high: Math.max(against.range.highMidi, p.range.highMidi) };
       const left = h('div', { class: 'vc-picture' }), right = h('div', { class: 'vc-picture' });
@@ -748,16 +752,18 @@ export function mountVoiceCheck(view, {
         h('div', { class: 'vc-pair' }, h('div', null, h('label', { class: 'reason vc-pair-head' }, 'Compare with ', pick), left), h('div', null, h('p', { class: 'reason vc-pair-head' }, `Tonight · ${c.heads[1]}`), right)),
         h('table', { class: 'vc-table' },
           h('thead', null, h('tr', null, h('th', null, ''), h('th', null, c.heads[0]), h('th', null, c.heads[1]), h('th', null, h('span', { class: 'visually-hidden' }, 'What grew')))),
-          h('tbody', null, c.rows.map((r) => h('tr', { dataset: { id: r.id, grew: r.grew ? 'yes' : 'no' } },
+          h('tbody', null, rows.map((r) => h('tr', { dataset: { id: r.id, grew: r.grew ? 'yes' : 'no', clear: r.clear } },
             h('th', { scope: 'row' }, r.label), h('td', null, r.a), h('td', null, r.b),
-            // Rewards only go up: a row that is the same or behind gets nothing here at all.
-            h('td', { class: 'vc-gain' }, r.grew ? [icon('star', 16), ' ', r.gain] : null))))),
+            // Rewards only go up: a row that is the same or behind gets nothing here at all;
+            // a small gain keeps its words, muted, with no star.
+            gainLook(r) === 'gold' ? h('td', { class: 'vc-gain' }, icon('star', 16), ' ', r.gain)
+              : gainLook(r) === 'muted' ? h('td', { class: 'sf-small' }, `${r.gain} ${NORMAL_DAY}`) : h('td', null))))),
         h('p', { class: 'reason' }, c.note),
         c.rangeNote ? h('p', { class: 'reason' }, c.rangeNote) : null);
       shownPortraits.push(
         mountPortrait(left, against, { words: horizons(against), calm: true, tonight: false, dim: V.portrait.earlierK, scale, config }),
         mountPortrait(right, p, { words: horizons(p), calm: shell.calm(), play: fresh, tonight: true, scale, config }));
-      if (fresh && c.anyGrew) bestChip.hidden = false;
+      if (fresh && anyClear) bestChip.hidden = false;
       fresh = false;
     }
 

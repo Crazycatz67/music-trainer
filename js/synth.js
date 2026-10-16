@@ -61,6 +61,8 @@
 //                            call (browser only: fetch + decodeAudioData, cached) and is
 //                            'voice' until they are in, or for good if they fail: silent.
 //   useSampleBank(bank|null) -> sets (or clears) the 'oohs' bank directly (labs and checks)
+//   samplesReady() -> Promise<boolean>: true once the 'oohs' bank is loaded (starts the load),
+//                            false if it failed or cannot load here. Never rejects.
 //                            'mine' -> { envelope } (the singer's own tone colour), taken from
 //                            `envelope` when given, else from the useOwnVoice source; 'sung'
 //                            when there is none or it is not playable.
@@ -145,7 +147,15 @@ function wantOohs() {
     notes: set.notes,
     urlFor: (midi) => new URL(`../${set.dir}${midi}.wav`, import.meta.url),
     decode: (bytes) => decoder.decodeAudioData(bytes).then((b) => ({ rate: b.sampleRate, data: b.getChannelData(0) })),
-  }).then((bank) => { oohsBank = bank; }, () => { /* stays 'voice' for this page: no retry storm */ });
+  }).then((bank) => { oohsBank = bank; return true; }, () => false /* stays 'voice' for this page: no retry storm */);
+}
+// Resolves true once the 'oohs' bank is in (at once if it already is), false when it failed or
+// cannot load here (Node, no fetch). Starts the load, so callers need not call timbreFor first.
+// Lets a one-off render (a chart's guide) wait for the real "oo" instead of polling timbreFor.
+export function samplesReady() {
+  if (oohsBank) return Promise.resolve(true);
+  wantOohs();
+  return oohsLoad ? oohsLoad.then(() => !!oohsBank) : Promise.resolve(false);
 }
 
 let ownSource = () => null;

@@ -117,3 +117,41 @@
    stage; here the words above the stage and on the curtain say what to do. Its Paused and
    Reconnect cards stay. */
 .voice-check .stage[data-state="idle"] .stage-card { display: none; }
+
+/* ================================================================ "Since your first" on Progress
+   (js/app/sincefirst.js; 2026-10-15 spec section 4). Reuses the compare pair and table above. */
+/* The card's own width decides the narrow layout, so it holds in any column (and in the lab). */
+.sf-card { position: relative; isolation: isolate; container-type: inline-size; }
+.sf-card > * + * { margin-top: var(--s3); }
+.sf-head { flex-wrap: wrap; gap: var(--s3); }
+.sf-head .vc-pair-head { margin-left: auto; }
+.sf-headline { font-weight: 600; color: var(--text); }
+.sf-one .portrait-thumb { max-width: 452px; }
+/* A gain under the clear line: its words, muted, no star and no gold. */
+.sf-small { color: var(--muted); }
+.sf-trail { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Picker change: a 200 ms cross-fade of the pair and table; calm and reduced motion repaint at once. */
+.sf-body { transition: opacity 200ms var(--ease); }
+.sf-body.sf-fading { opacity: 0; }
+/* The Best tier, once: a soft gold glow that rises and settles behind this card's own area.
+   One slow rise and fall (no flash), nothing around it moves. */
+.sf-bloom { position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(closest-side, var(--gold-glow), transparent); opacity: 0;
+  animation: sf-bloom 2400ms var(--ease) 300ms 1 both; }
+@keyframes sf-bloom { 40% { opacity: 1; } to { opacity: .35; } }
+[data-calm="on"] .sf-bloom { display: none; }
+[data-calm="on"] .sf-body { transition: none; }
+@media (prefers-reduced-motion: reduce) { .sf-bloom { display: none; } .sf-body { transition: none; } }
+/* A card 700 px or narrower: the pictures stack, the gain words go under the row. */
+@container (max-width: 700px) {
+  .sf-pair { grid-template-columns: minmax(0, 1fr); }
+  .sf-table tbody tr { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "name a b" "gain gain gain"; }
+  .sf-table tbody th { grid-area: name; }
+  .sf-table tbody td:nth-of-type(1) { grid-area: a; }
+  .sf-table tbody td:nth-of-type(2) { grid-area: b; }
+  .sf-table tbody td:nth-of-type(3) { grid-area: gain; white-space: normal; padding-top: 0; }
+  .sf-table tbody td:nth-of-type(3):empty { display: none; }
+  .sf-table thead tr { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .sf-table thead th:last-child { display: none; }
+  .sf-head .vc-pair-head { margin-left: 0; }
+}

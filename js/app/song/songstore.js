@@ -39,7 +39,7 @@
 //       { groups: { mine: [entry], demo: [entry], charts: [entry] }, bytes, dropped, unavailable? }
 //       entry = { id, kind: 'file' | 'demo' | 'chart', group, title, artist, duration, addedAt,
 //                 fileName, bytes, curveId, hasSinger, hasBacking, hasWords, range, fit, takes,
-//                 octave, key, guide, lastSungAt, bestLines, credit, chartId, rating }
+//                 octave, octaveSet, key, guide, lastSungAt, bestLines, credit, chartId, rating }
 //       rating: the song's difficulty at its top level (difficulty.js), one decimal; null for a
 //         song with no written tune (a recording: rated from its traced curve later, slice D5)
 //       search: words that must all appear in the title or artist (case and accents ignored)
@@ -52,8 +52,8 @@
 //                        vocal: { samples, sampleRate } | null } | null
 //       Sound found damaged is forgotten (the entry stops promising it); the song stays.
 //   store.curve(id) -> Curve (js/app/analyse/curve.js) | null
-//   store.update(id, { title?, artist?, octave?, key?, guide?, lastSungAt?, bestLines?, credit?, chartId? }) -> boolean
-//       octave -1 | 0 | 1, key -6..6, guide 0..3 (whole numbers; a value outside is not stored)
+//   store.update(id, { title?, artist?, octave?, octaveSet?, key?, guide?, lastSungAt?, bestLines?, credit?, chartId? }) -> boolean
+//       octave -1 | 0 | 1, octaveSet true once the singer chose it, key -6..6, guide 0..3 (whole numbers; a value outside is not stored)
 //   store.setWords(id, words | null) -> boolean      words: the shape in words.js. The only
 //       place words are kept.
 //   store.remove(id, { withTakes = true }) -> boolean
@@ -217,6 +217,8 @@ export function cleanSong(raw) {
     phrases: Array.isArray(raw.phrases) ? raw.phrases.filter((p) => p && Number.isFinite(p.t) && Number.isFinite(p.end) && p.end > p.t).map((p) => ({ t: p.t, end: p.end })) : [],
     words: cleanWords(raw.words),
     octave: whole(raw.octave, -1, 1) ?? 0, key: whole(raw.key, -6, 6) ?? 0, guide: whole(raw.guide, 0, 3) ?? 0,
+    // The singer chose the octave (best-key spec 3.7): the app never moves this song for them again.
+    octaveSet: raw.octaveSet === true,
     lastSungAt: isDate(raw.lastSungAt) ? raw.lastSungAt : null,
     bestLines: raw.bestLines && typeof raw.bestLines === 'object' ? raw.bestLines : null,
     credit: text(raw.credit), chartId: typeof raw.chartId === 'string' ? raw.chartId : null,
@@ -298,7 +300,7 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
             id: `demo:${tl.file || tl.title}`, kind: 'demo', title: tl.title, artist: tl.artist || '',
             duration: facts.duration, range: facts.range, addedAt: null, fileName: tl.file ? `${tl.file}.txt` : '',
             curveId: null, hasSinger: false, parts: {}, bytes: 0, phrases: [], words: null, timeline: tl,
-            octave: 0, key: 0, guide: 0, lastSungAt: null, bestLines: null, chartId: null,
+            octave: 0, octaveSet: false, key: 0, guide: 0, lastSungAt: null, bestLines: null, chartId: null,
             credit: (tl.meta && tl.meta.headers && tl.meta.headers.CREATOR) || '',
           };
         });
@@ -318,7 +320,7 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
       hasSinger: m.hasSinger, hasBacking: !!m.parts.backing,
       hasWords: !!m.words || !!(m.timeline && m.timeline.notes.some((n) => n.lyric)),
       range: m.range, takes: counts.get(m.id) || 0,
-      octave: m.octave, key: m.key, guide: m.guide, lastSungAt: m.lastSungAt, bestLines: m.bestLines,
+      octave: m.octave, octaveSet: !!m.octaveSet, key: m.key, guide: m.guide, lastSungAt: m.lastSungAt, bestLines: m.bestLines,
       credit: m.credit, chartId: m.chartId, rating: ratingOf(m),
       ...(m.analysis ? { analysis: { ...m.analysis } } : {}),
     };
@@ -453,6 +455,7 @@ export function createSongStore({ backend, takes = null, demo = null, now = () =
         if (patch.title !== undefined) next.title = text(patch.title) || m.title;
         if (patch.artist !== undefined) next.artist = text(patch.artist);
         if (patch.octave !== undefined) next.octave = whole(patch.octave, -1, 1) ?? m.octave;
+        if (patch.octaveSet !== undefined) next.octaveSet = patch.octaveSet === true;
         if (patch.key !== undefined) next.key = whole(patch.key, -6, 6) ?? m.key;
         if (patch.guide !== undefined) next.guide = whole(patch.guide, 0, 3) ?? m.guide;
         for (const k of ['lastSungAt', 'bestLines', 'credit', 'chartId']) if (patch[k] !== undefined) next[k] = patch[k];

@@ -416,17 +416,20 @@ export const placeholderScreens = {
     const what = [
       'Slide your voice up and down to wake it up.', 'Find your lowest and highest comfortable notes.',
       'Hear a note, sing it, hold it steady.', 'Follow one long curve up and back down.',
-      'Short tunes, one note at a time.', 'Match a note without watching the line.',
+      'Short tunes, one note at a time.', 'Four notes in time, walking up your range.',
+      'Jump from one note to another, then climb a scale.', 'Match a note without watching the line.',
     ];
-    // "Sing a constellation" took the Four-note patterns slot (owner, 2026-10-12): the timed
-    // sing-back comes back later as its "in one breath" mode.
-    const names = ['Glide warm-up', 'Find your range', 'Match and hold', 'Siren', 'Sing a constellation', 'Eyes closed'];
+    // Patterns and leaps got rungs of their own, with the scrolling bars (spec 2026-10-15
+    // patterns-intervals-scales section 1); Eyes closed tests it all blind, so it is the top rung.
+    const names = ['Glide warm-up', 'Find your range', 'Match and hold', 'Siren', 'Sing a constellation', 'Star steps', 'Leaps and scales', 'Eyes closed'];
     const built = {
       'Glide warm-up': ['#/practice/glide', '3 glides, about 30 seconds.'],
       'Siren': ['#/practice/siren', '2 sirens, about 25 seconds.'],
       'Find your range': ['#/practice/range', 'Two steps, about one minute. Exercises then fit your voice.'],
       'Match and hold': ['#/practice/match', '5 notes, about 90 seconds.'],
       'Sing a constellation': ['#/practice/constellation', '12 star figures to draw with your voice.'],
+      'Star steps': ['#/practice/star-steps', '4 patterns, about a minute.'],
+      'Leaps and scales': ['#/practice/leaps', '4 leaps and 1 scale, about a minute.'],
       'Eyes closed': ['#/practice/eyes-closed', '3 notes, about 30 seconds.'],
     };
     view.append(

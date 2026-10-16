@@ -37,6 +37,7 @@
 
 import { DIFFICULTY } from './difficulty.config.js';
 import { LEVELS, bandOf, rangeFit } from './difficulty.js';
+import { keyAdvice } from './bestkey.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -66,7 +67,12 @@ export function entryFit(entry, range, { link = false, cfg = DIFFICULTY } = {}) 
   if (!range || !isNum(range.lowMidi) || !isNum(range.highMidi)) return link ? rangeFit({ notes: [{ t: 0, dur: 1, midi: r.lowest }] }, null, { cfg }) : null;
   // The list record keeps only the tune's two ends; they are all the fit's words depend on
   // (outsideShare, which only feeds the personal number, is then an estimate).
-  return rangeFit({ notes: [{ t: 0, dur: 1, midi: r.lowest }, { t: 1, dur: 1, midi: r.highest }] }, range, { rating: isNum(entry.rating) ? entry.rating : null, cfg });
+  const fit = rangeFit({ notes: [{ t: 0, dur: 1, midi: r.lowest }, { t: 1, dur: 1, midi: r.highest }] }, range, { rating: isNum(entry.rating) ? entry.rating : null, cfg });
+  // The row names the octave move when one is needed (best-key spec 3.2 a): rangeFit describes
+  // the song after its best move, which the song only gets once it is opened or Use it is pressed.
+  const a = keyAdvice(entry, range, { current: isNum(entry.octave) ? entry.octave : 0, kind: entry.kind === 'file' ? 'file' : 'chart', cfg });
+  if (a.code === 'move' || (a.code === 'fits' && a.current !== 0)) return { ...fit, words: a.row, title: a.title || a.row };
+  return fit;
 }
 
 const svg = (body) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">${body}</svg>`;

@@ -75,7 +75,8 @@
 // CONTRACT — createStage(host, { config? }) -> stage            [browser only]
 //   stage.el, stage.canvas
 //   stage.set({ state, target, nowFrac, pxPerSec, wide, range, calm, noteStyle, countIn, cursor,
-//               octaveCents, freshTarget, labelClearTopPx, grid, voiceAlpha, nowLine, ribbon, ribbonMarks })
+//               octaveCents, freshTarget, labelClearTopPx, grid, voiceAlpha, nowLine, ribbon, ribbonMarks,
+//               ribbonJudge, noteMarks, barLabels })
 //       ribbon: null | ribbonFromTimeline(...) in the same clock as the frames pushed. Drawn
 //           instead of a band (use target null with it): filled --target-halo, dotted centre,
 //           a dot at the now line, and behind the dot a --good-wash fill where the voice was
@@ -84,6 +85,20 @@
 //           The view rests on the middle of the whole path. A new ribbon cross-fades over
 //           targetFadeMs while the loop runs.
 //       ribbonMarks: null | [{ t, midi }] small hollow diamonds on the path (siren breaks)
+//       ribbonJudge: 'path' (default: Glide, Siren) | 'note': the ribbon's centre at a reading's
+//           time is handed to the readout as a plain target (normal in 25 / close 50 / off gate,
+//           normal voice-line styles) instead of "with the path". Pure: ribbonReading().
+//       noteMarks: null | [{ t0, t1, midi, kind: 'in'|'close'|'off'|'none', dir: 'low'|'high'|null }]
+//           restyles each judged bar (half = ribbon.half): in = solid --good + tick, close =
+//           --close hatch + arrow, off = outline + arrow, none = dotted outline + three dots.
+//           A bar's new look eases in over CONFIG.stage.noteMarkMs (300; calm motion too: a fade).
+//           A new ribbon cross-fades with the old one, whose marks and labels fade out with it
+//           where they were (Star steps' next item restarts the clock; a cut read 0.26).
+//           Pure: NOTE_MARK_LOOKS, noteMarkLook(kind), markEase(sinceMs, nowMs, ms).
+//       barLabels: false (default) | true | [syllable per bar]: note name above each bar
+//           (--quiet, 11 px), syllable below ('la' when true); bars under
+//           CONFIG.stage.barLabelMinPx (default 28) px wide get none, nor does anything above
+//           labelClearTopPx. Pure: barLabelPlan(ribbon, { syllables, noteStyle, pxPerSec, minPx }).
 //       nowLine: true (default) | false: the upright "now" line and its "now" pill are not
 //           drawn (the voice check's ten notes and six tunes: nothing scrolls there, so a
 //           now-line promises a moving reading that never comes; voice-check review C2).
@@ -306,6 +321,46 @@ export function ribbonVerdict(inside, cents) {
 // ---------------------------------------------------------------- pure: words and numbers
 
 // One rounding for every place a cents number is shown. "+ 0" turns -0 into 0.
+// ---------------------------------------------------------------- pure: note bars (Star steps)
+// A ribbon of flat bars (one per note, ribbonFromTimeline with half 0.5) can be judged as
+// notes instead of as a path: 'note' hands the bar's centre to the readout as an ordinary
+// target, so a reading gets the normal gate (in 25 / close 50 / off) and the voice line the
+// usual in / close / off styles. 'path' (the default) is Glide and Siren, unchanged.
+export function ribbonReading(ribbon, t, judge = 'path') {
+  const rm = ribbon ? ribbonMidiAt(ribbon, t) : null;
+  if (rm === null) return { target: null, ribbon: null };
+  return judge === 'note' ? { target: rm, ribbon: null } : { target: null, ribbon: { midi: rm, half: ribbon.half } };
+}
+
+// How a judged bar looks (STYLE 3, "target bar after the note"). fill: a token name or null;
+// outline: 'solid' | 'dotted' | null; glyph drawn at the bar's right end.
+export const NOTE_MARK_LOOKS = Object.freeze({
+  in: Object.freeze({ fill: 'good', hatch: false, outline: null, glyph: 'tick' }),
+  close: Object.freeze({ fill: 'close', hatch: true, outline: null, glyph: 'arrow' }),
+  off: Object.freeze({ fill: null, hatch: false, outline: 'solid', glyph: 'arrow' }),
+  none: Object.freeze({ fill: null, hatch: false, outline: 'dotted', glyph: 'dots' }),
+});
+export function noteMarkLook(kind) { return NOTE_MARK_LOOKS[kind] || null; }
+
+// A bar's new look eases in (0..1) over ms since its verdict arrived; ms 0 (calm) is at once.
+export function markEase(sinceMs, nowMs, ms = 200) {
+  if (!(ms > 0)) return 1;
+  return Math.min(1, Math.max(0, (nowMs - sinceMs) / ms));
+}
+
+// The labels over and under each bar: the note name above, a syllable below ('la' unless an
+// array gives one per bar, e.g. the scale's '1 2 3 4 5 4 3 2 1'). show is false for a bar
+// narrower than minPx at this speed, so labels never pile up at a very high tempo.
+export function barLabelPlan(ribbon, { syllables = null, noteStyle = 'letters', pxPerSec = 120, minPx = 28 } = {}) {
+  if (!ribbon || !ribbon.segments) return [];
+  return ribbon.segments.map((s, i) => {
+    const midi = Math.round(ribbonMidiAt(ribbon, (s.t0 + s.t1) / 2) ?? s.pts[0].midi);
+    const widthPx = (s.t1 - s.t0) * pxPerSec;
+    const syll = Array.isArray(syllables) ? String(syllables[i] ?? '') : 'la';
+    return { t0: s.t0, t1: s.t1, midi, name: displayNote(midi, noteStyle).text, syll, widthPx, show: widthPx >= minPx };
+  });
+}
+
 export const roundCents = (cents) => Math.round(cents) + 0;
 
 export function numberText(cents, cfg = CONFIG.verdict) {
@@ -593,6 +648,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     wide: false, range: null, calm: false, noteStyle: 'letters', countIn: null, cursor: null,
     octaveCents: null, freshTarget: false, labelClearTopPx: 0, grid: 'full', voiceAlpha: 1, nowLine: true,
     aurora: null, auroraRange: null, ribbon: null, ribbonMarks: null,
+    ribbonJudge: 'path', noteMarks: null, barLabels: false,
   };
   let points = [], take = null, last = null, lastVoiced = null;
   // The aurora (js/app/aurora.js). Each trail point keeps the loudness, hold growth and hue it
@@ -623,6 +679,8 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
   let onResume = null, prevTarget = null, targetSinceMs = -Infinity;
   // A ribbon that changes while the loop runs fades like a band: the old one out, the new one in.
   let prevRibbon = null, ribbonSinceMs = -Infinity, ribbonDot = null;
+  // The outgoing ribbon's marks and labels, and the clock it was last drawn at (ribbonNow).
+  let prevMarks = null, prevLabels = false, prevNow = 0, ribbonNow = 0;
   // A change of picture in progress: { sinceMs, ms, fromCentre, cutT }.
   //   fromCentre  a number: the old picture is drawn where it was (centred there) and fades
   //               out while the new one fades in. null: the view has not moved.
@@ -855,10 +913,19 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
   // --close-wash where it was outside (spec 7.1); unvoiced stretches stay plain.
   function drawRibbons(L, now, nowMs, pts) {
     const k = wanted && C.targetFadeMs > 0 ? Math.min(1, Math.max(0, (nowMs - ribbonSinceMs) / C.targetFadeMs)) : 1;
-    if (k < 1 && prevRibbon) drawRibbon(L, now, prevRibbon, 1 - k, null, null);
-    else if (k >= 1) prevRibbon = null;
+    if (k < 1 && prevRibbon) {
+      // A clock that went back (a new item from 0) would move the old picture off the stage
+      // in one frame: it fades out where it was instead.
+      const at = Math.max(now, prevNow);
+      drawRibbon(L, at, prevRibbon, 1 - k, null, null);
+      if (prevMarks) drawNoteMarks(L, at, nowMs, prevRibbon.half, prevMarks, 1 - k, false);
+      if (prevLabels) drawBarLabels(L, at, prevRibbon, 1 - k, prevLabels);
+    } else if (k >= 1) { prevRibbon = null; prevMarks = null; prevLabels = false; }
+    ribbonNow = now;
     ribbonDot = st.ribbon ? ribbonMidiAt(st.ribbon, now) : null;
     if (st.ribbon) drawRibbon(L, now, st.ribbon, k, pts, st.ribbonMarks);
+    if (st.ribbon && st.noteMarks) drawNoteMarks(L, now, nowMs, st.ribbon.half, st.noteMarks, k);
+    if (st.ribbon && st.barLabels) drawBarLabels(L, now, st.ribbon, k);
     ctx.globalAlpha = 1;
     ctx.setLineDash([]);
   }
@@ -943,6 +1010,116 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+  }
+
+  // ---- judged note bars (Star steps; spec patterns 6.2): each mark restyles its bar. A mark's
+  // look eases in over noteMarkMs from when its kind first arrived (keyed by bar), so a verdict
+  // never pops; calm draws it at once. The map is pruned to the marks still given.
+  const markSince = new Map();
+  // eased false: an outgoing ribbon's marks, drawn as they were (alpha a only; markSince untouched).
+  function drawNoteMarks(L, now, nowMs, half, marks, a, eased = true) {
+    const ms = C.noteMarkMs ?? 200;
+    const seen = new Set();
+    for (const mk of marks) {
+      const look = noteMarkLook(mk && mk.kind);
+      if (!look || !Number.isFinite(mk.midi) || !(mk.t1 > mk.t0)) continue;
+      const key = `${mk.t0}|${mk.midi}`;
+      let rec = { since: -Infinity };
+      if (eased) {
+        seen.add(key);
+        rec = markSince.get(key);
+        if (!rec || rec.kind !== mk.kind) { rec = { kind: mk.kind, since: nowMs }; markSince.set(key, rec); }
+      }
+      const x0 = L.xOfTime(mk.t0, now), x1 = L.xOfTime(mk.t1, now);
+      if (x1 < L.plotX || x0 > width) continue;
+      const k = a * markEase(rec.since, nowMs, ms);
+      const yT = L.yOfMidi(mk.midi + half), yB = L.yOfMidi(mk.midi - half);
+      const x = Math.max(x0, L.plotX), w = x1 - x, h = yB - yT;
+      if (!(w > 0)) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(L.plotX, 0, width - L.plotX, height);
+      ctx.clip();
+      if (look.fill) {
+        ctx.globalAlpha = (look.hatch ? 0.45 : 0.85) * k;
+        ctx.fillStyle = tokens[look.fill];
+        ctx.fillRect(x, yT, w, h);
+      }
+      if (look.hatch) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, yT, w, h);
+        ctx.clip();
+        ctx.globalAlpha = 0.8 * k;
+        ctx.strokeStyle = tokens.close;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        // Anchored to the time axis like fillBehind's hatching: it travels, never shimmers.
+        const off = ((L.xOfTime(0, now) % 8) + 8) % 8;
+        for (let hx = Math.floor((x - h - off) / 8) * 8 + off; hx < x + w; hx += 8) { ctx.moveTo(hx, yB); ctx.lineTo(hx + h, yT); }
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (look.outline) {
+        ctx.globalAlpha = k;
+        ctx.strokeStyle = look.outline === 'dotted' ? tokens.quiet : tokens.off;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(look.outline === 'dotted' ? [2, 4] : []);
+        ctx.strokeRect(x0 + 0.75, yT + 0.75, x1 - x0 - 1.5, h - 1.5);
+        ctx.setLineDash([]);
+      }
+      // The glyph at the bar's right end: tick, an arrow toward the note (dir 'low' = sung
+      // low, so the arrow points up), or three dots for a note not sung.
+      const gx = x1 - 10, gy = (yT + yB) / 2;
+      if (gx > L.plotX) {
+        ctx.globalAlpha = k;
+        ctx.strokeStyle = ctx.fillStyle = look.glyph === 'tick' ? tokens.text : look.glyph === 'dots' ? tokens.quiet : tokens[mk.kind === 'close' ? 'close' : 'off'];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (look.glyph === 'tick') { ctx.moveTo(gx - 4, gy); ctx.lineTo(gx - 1, gy + 3); ctx.lineTo(gx + 4, gy - 3); ctx.stroke(); }
+        else if (look.glyph === 'arrow' && (mk.dir === 'low' || mk.dir === 'high')) {
+          const s = mk.dir === 'low' ? -1 : 1;           // canvas y grows down: up = -1
+          ctx.moveTo(gx, gy - 4 * s); ctx.lineTo(gx, gy + 4 * s);
+          ctx.moveTo(gx - 3, gy + s); ctx.lineTo(gx, gy + 4 * s); ctx.lineTo(gx + 3, gy + s);
+          ctx.stroke();
+        } else if (look.glyph === 'dots') for (const dx of [-5, 0, 5]) { ctx.beginPath(); ctx.arc(gx + dx, gy, 1.5, 0, 2 * Math.PI); ctx.fill(); }
+      }
+      ctx.restore();
+    }
+    if (eased) for (const key of markSince.keys()) if (!seen.has(key)) markSince.delete(key);
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- bar labels: the note name above each bar (small, quiet), the syllable under it.
+  // barLabels: true ('la' on every bar) or an array of syllables, one per bar.
+  function drawBarLabels(L, now, rb, a, labels = st.barLabels) {
+    const plan = barLabelPlan(rb, {
+      syllables: Array.isArray(labels) ? labels : null, noteStyle: st.noteStyle,
+      pxPerSec: L.pxPerSec, minPx: C.barLabelMinPx ?? 28,
+    });
+    const clearTop = Math.max(0, st.labelClearTopPx || 0);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center';
+    for (const b of plan) {
+      if (!b.show) continue;
+      const x0 = L.xOfTime(b.t0, now), x1 = L.xOfTime(b.t1, now), cx = (x0 + x1) / 2;
+      if (x1 < L.plotX || x0 > width || cx < L.plotX) continue;
+      const yT = L.yOfMidi(b.midi + rb.half), yB = L.yOfMidi(b.midi - rb.half);
+      if (yT - 5 - 11 >= clearTop) {
+        ctx.font = font(500, 11);
+        ctx.fillStyle = tokens.quiet;
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(b.name, cx, yT - 5);
+      }
+      if (b.syll && yB + 4 >= clearTop) {
+        ctx.font = font(500, 13);
+        ctx.fillStyle = tokens.text;
+        ctx.textBaseline = 'top';
+        ctx.fillText(b.syll, cx, yB + 4);
+      }
+    }
+    ctx.restore();
   }
 
   // Runs of the same kind are filled as one slice: in = wash, close = hatched wash.
@@ -1726,6 +1903,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     el: root, canvas,
     set(patch = {}) {
       const before = st.state, targetBefore = st.target, calmBefore = !!st.calm, ribbonBefore = st.ribbon;
+      const marksBefore = st.noteMarks, labelsBefore = st.barLabels;
       let jumped = false;
       Object.assign(st, patch);
       if (!!st.calm !== calmBefore && tokens) buildSprites();
@@ -1770,6 +1948,9 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
       if (st.state === 'tone' && before !== 'tone') toneStartMs = performance.now();
       if ('ribbon' in patch && patch.ribbon !== ribbonBefore) {
         prevRibbon = wanted ? ribbonBefore : null;
+        prevMarks = prevRibbon && Array.isArray(marksBefore) && marksBefore.length ? marksBefore : null;
+        prevLabels = prevRibbon ? labelsBefore : false;
+        prevNow = ribbonNow;
         ribbonSinceMs = performance.now();
         readout.reset();
       }
@@ -1780,10 +1961,10 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     },
     push(frame, level = 0) {
       if (st.state !== 'live') return last;
-      const rm = st.ribbon ? ribbonMidiAt(st.ribbon, frame.t) : null;
+      const on = ribbonReading(st.ribbon, frame.t, st.ribbonJudge);
       last = readout.push(frame, {
-        target: st.target ? st.target.midi : null, level, noteStyle: st.noteStyle, octaveCents: st.octaveCents,
-        ribbon: rm === null ? null : { midi: rm, half: st.ribbon.half },
+        target: st.target ? st.target.midi : on.target, level, noteStyle: st.noteStyle, octaveCents: st.octaveCents,
+        ribbon: on.ribbon,
       });
       if (last.voiced) { lastVoiced = { t: last.t, midi: last.midi }; voicedAtMs = performance.now(); }
       const dt = pushT === null ? 0 : frame.t - pushT;
@@ -1883,7 +2064,7 @@ export function createStage(host, { config = CONFIG, guard = sharedGuard } = {})
     debug: () => ({
       centre, goal, runs: lastRuns, leaps: lastLeaps, head: headState, running: !!raf, state: st.state, width, height,
       tag: tagMark.a > 0.01 ? tagMark.text : '', out: outMark.a > 0.01 ? outMark.text : '', fading: !!move,
-      fit: fitTo ? { ...fitTo } : null, lanes: shownLanes, ribbon: st.ribbon ? { dot: ribbonDot, marks: (st.ribbonMarks || []).length } : null, grid: st.grid, voiceAlpha: st.voiceAlpha, nowLine: st.nowLine !== false,
+      fit: fitTo ? { ...fitTo } : null, lanes: shownLanes, ribbon: st.ribbon ? { dot: ribbonDot, marks: (st.ribbonMarks || []).length, judge: st.ribbonJudge, noteMarks: (st.noteMarks || []).length, labels: !!st.barLabels } : null, grid: st.grid, voiceAlpha: st.voiceAlpha, nowLine: st.nowLine !== false,
       // The curtain's last frame: milliseconds spent on it, columns drawn, the guard's step.
       auroraMs, auroraCols, auroraTier, sparks: lastSparks, halo: Number(haloK.toFixed(2)),
     }),

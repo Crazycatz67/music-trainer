@@ -52,7 +52,7 @@
 // Never throws on construction: unreadable prefs fall back to the defaults.
 
 import { SONG } from './song/config.js';
-import { createSongStore, idbSongBackend } from './song/songstore.js';
+import { createSongStore, idbSongBackend, loadDemoSongs } from './song/songstore.js';
 import { createTakeStore, idbBackend } from './song/takes.js';
 import { songMix } from './song/mix.js';
 import { createLookup } from './song/words.js';
@@ -138,7 +138,13 @@ export function createSongService({ storage = null, hooks = {} } = {}) {
 
   // ---- the stores and the analysis queue (nothing is fetched until jobs.go())
   const takes = createTakeStore({ backend: idbBackend({ name: hooks.takeDb }) });
-  const store = createSongStore({ backend: idbSongBackend({ name: hooks.songDb }), takes });
+  // The bundled public-domain charts (songs/demo) are the Demo songs group (bug 84): read
+  // from this site's own folder the first time the list is painted, never stored. A lab may
+  // hand in its own (hooks.demo, async () -> [timeline]) or none (hooks.demo === null).
+  const demoBase = new URL('../../songs/demo/', import.meta.url).href;
+  const demo = hooks.demo !== undefined ? hooks.demo
+    : () => loadDemoSongs({ base: demoBase, fetchText: async (url) => { const r = await window.fetch(url); if (!r.ok) throw new Error(`${r.status} ${url}`); return r.text(); } });
+  const store = createSongStore({ backend: idbSongBackend({ name: hooks.songDb }), takes, demo });
   const localModels = query.get('models') === 'local';
   const modelBase = localModels ? (id) => new URL(`../../tools/.cache/models/${MODELS[id].dir}/`, import.meta.url).href : (id) => MODELS[id].base;
   const jobs = createJobs({ store, loadTools: hooks.loadTools || ((o) => loadTools({ ...o, modelBase })) });

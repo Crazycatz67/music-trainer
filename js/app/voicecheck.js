@@ -58,6 +58,8 @@
 //   compareRows(earlier, tonight, { noteStyle? }) -> { rows: [{ id, label, a, b, grew, gain }],
 //         anyGrew, rangeChanged, note, rangeNote }
 //       grew only where tonight is ahead; gain is '' on every other row (rewards only go up).
+//   markClear(rows, cfg?) -> rows + clear: 'gain' | 'loss' | 'same' (cfg.clear lines)
+//   gainLook(row) -> 'gold' | 'muted' | ''   gold only for a clear gain (result screen + Progress)
 //   lastFacts(checks, now) -> { last: "12 Oct 2026" | '', soon, ladder: "Not taken yet" | "Last: 12 Oct" }
 //   rangeFresh(entry, now, cfg?) -> boolean     measured inside cfg.reuseRangeHours
 //   VOICECHECK_KEY   'music-trainer.voicecheck.v1' -> { v: 1, checks: [Portrait] }, oldest
@@ -346,7 +348,8 @@ export function compareRows(a, b, { noteStyle = 'letters' } = {}) {
   // more: how much tonight is ahead (<= 0 or null: not ahead). gain: the words for it.
   const row = (id, label, av, bv, more = null, gain = () => '') => {
     const grew = isNum(more) && more > 0;
-    rows.push({ id, label, a: av, b: bv, grew, gain: grew ? gain(more) : '' });
+    // more rides along so sinceFirst can tell a clear change from a normal day's wobble.
+    rows.push({ id, label, a: av, b: bv, grew, gain: grew ? gain(more) : '', more: isNum(more) ? more : null });
   };
   const spanOf = (p) => p.range.highMidi - p.range.lowMidi;
   const rangeText = (p) => `${name(p.range.lowMidi)} to ${name(p.range.highMidi)} (${plural(spanOf(p), 'note')})`;
@@ -371,6 +374,68 @@ export function compareRows(a, b, { noteStyle = 'letters' } = {}) {
     rangeNote: rangeChanged ? 'The ten notes moved with your range, so the two nights sang slightly different notes.' : '',
     heads: [dateWords(a.at), dateWords(b.at)],
   };
+}
+
+// ---------------------------------------------------------------- since your first (2026-10-15 spec 4.2)
+
+// Lower-case names for the headline; 'away' reads as what it means, not as its row label.
+const CLEAR_NAMES = { range: 'range', on: 'notes on target', away: 'how close you sing', steady: 'holding notes steady', lock: 'finding a note', tunes: 'tune notes on target', shapes: 'tune shapes' };
+const ways = (n) => `${n} ${n === 1 ? 'way' : 'ways'}`;
+
+// markClear(rows, cfg) -> compareRows rows, each with clear: 'gain' | 'loss' | 'same'
+//   against cfg.clear (a row with no line, like the easy note, is always 'same').
+// gainLook(row) -> 'gold' | 'muted' | ''   how a view shows the row's gain words:
+//   gold (star) only for a clear gain; a smaller gain is muted "(within a normal day)";
+//   the same or behind shows nothing. One rule for the result screen and Progress, so a
+//   +1 never earns a star tonight and then reads as "a normal day" on Progress.
+export function markClear(rows, cfg = V()) {
+  const line = (cfg && cfg.clear) || {};
+  return (Array.isArray(rows) ? rows : []).map((r) => {
+    const at = line[r.id];
+    const clear = !isNum(at) || !isNum(r.more) ? 'same' : r.more >= at - 1e-9 ? 'gain' : r.more <= -at + 1e-9 ? 'loss' : 'same';
+    return { ...r, clear };
+  });
+}
+export const gainLook = (r) => (r && r.clear === 'gain' ? 'gold' : r && r.grew && r.gain ? 'muted' : '');
+export const NORMAL_DAY = '(within a normal day)';
+
+// sinceFirst(checks, pickId?, cfg) -> { first, other, rows, headline, trail, rangeNote, note }
+//   checks: oldest first as readPortraits gives them (checks[0] is the pinned first).
+//   other: the portrait with id pickId among the later ones, else the newest; null under 2.
+//   rows: compareRows rows plus clear: 'gain' | 'loss' | 'same' against cfg.clear; a gain
+//     below the line keeps its words but is 'same' (the view words it muted, no star).
+//   trail: notes on target per portrait, oldest to newest, as a plain sentence.
+// Pure; never throws on an empty or short list.
+export function sinceFirst(checks, pickId = null, cfg = V(), { noteStyle = 'letters' } = {}) {
+  const list = Array.isArray(checks) ? checks.filter(Boolean) : [];
+  const first = list[0] || null;
+  const later = list.slice(1);
+  const other = later.find((c) => c.id === pickId) || later.at(-1) || null;
+  const of = first ? first.notes.of : 0;
+  const trail = list.length > 1 ? `Your portraits: ${list.map((c) => c.notes.onTarget).join(' · ')} of ${of} notes on target (oldest to newest)` : '';
+  if (!first || !other) return { first, other: null, rows: [], headline: '', trail, rangeNote: '', note: DAY_NOTE };
+  const c = compareRows(first, other, { noteStyle });
+  const rows = markClear(c.rows, cfg);
+  const gains = rows.filter((r) => r.clear === 'gain'), losses = rows.filter((r) => r.clear === 'loss');
+  const names = gains.slice(0, 2).map((r) => CLEAR_NAMES[r.id]);
+  let headline;
+  if (gains.length && losses.length) headline = `Better in ${ways(gains.length)}, lower in ${losses.length}. Voices move from day to day.`;
+  else if (gains.length === 1) headline = `Clearly better at ${names[0]}.`;
+  else if (gains.length) headline = `Clearly better in ${ways(gains.length)}: ${names.join(' and ')}.`;
+  else if (losses.length) headline = `Lower than your first in ${ways(losses.length)} tonight. A tired or cold voice does that; try again another day.`;
+  else headline = 'About the same as your first. Changes this small are normal from day to day.';
+  return { first, other, rows, headline, trail, rangeNote: c.rangeNote, note: c.note, heads: c.heads };
+}
+
+// The first portrait is the starting point of "Since your first", so it is never the one
+// dropped: the oldest by date stays (a backup merge may hand them over in any order), then
+// the newest keep - 1 of the rest in their saved order.
+export function keepWithFirst(checks, keep) {
+  if (!Array.isArray(checks) || checks.length <= 1) return Array.isArray(checks) ? checks.slice() : [];
+  let i0 = 0;
+  checks.forEach((c, i) => { if (c.at < checks[i0].at) i0 = i; });
+  const rest = checks.filter((_, i) => i !== i0);
+  return [checks[i0], ...(keep > 1 ? rest.slice(-(keep - 1)) : [])];
 }
 
 export function lastFacts(checks, now = new Date()) {
@@ -431,14 +496,14 @@ export function readPortraits(storage) {
   try {
     const raw = JSON.parse(text);
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.checks)) return { checks: [], ok: false };
-    return { checks: raw.checks.map(cleanPortrait).filter(Boolean).slice(-V().keep), ok: true };
+    return { checks: keepWithFirst(raw.checks.map(cleanPortrait).filter(Boolean), V().keep), ok: true };
   } catch { return { checks: [], ok: false }; }
 }
 
 export function savePortrait(storage, portrait, cfg = V()) {
   const clean = cleanPortrait(portrait);
   if (!clean) throw new RangeError('savePortrait: not a portrait');
-  const checks = [...readPortraits(storage).checks.filter((c) => c.id !== clean.id), clean].slice(-cfg.keep);
+  const checks = keepWithFirst([...readPortraits(storage).checks.filter((c) => c.id !== clean.id), clean], cfg.keep);
   let saved = false;
   try { if (storage) { storage.setItem(VOICECHECK_KEY, JSON.stringify({ v: 1, checks })); saved = true; } } catch { /* full or blocked: it still stands for this visit */ }
   return { saved, checks, portrait: clean };

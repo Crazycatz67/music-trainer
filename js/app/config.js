@@ -80,6 +80,9 @@ export const CONFIG = deepFreeze({
     // A target changed while drawing fades over this (never a full-width snap). At 200 ms
     // the new band read 0.19 on Dawn in labs/matchhold-lab.html; at 320 ms it is calmer.
     targetFadeMs: 320,
+    // A judged note bar's new look (Star steps) eases in over this, calm motion too (spec 10:
+    // a fade, never a pop). The in-tune fill read 0.24 on one 48 px cell at once (steps lab).
+    noteMarkMs: 300,
     // Review 2: a target further away than this never slides (an octave at 3 semitones a
     // second took 4 s, and the ring filled on a moving picture); it cross-fades instead.
     jumpFadeSemis: 5,
@@ -490,7 +493,12 @@ export const CONFIG = deepFreeze({
   // section 4; js/app/voicecheck.js, js/app/portrait.js, js/app/exercises/voicecheck.js).
   // Nobody has taken one with a real voice yet: every GUESS is the spec's own first value.
   voiceCheck: {
-    keep: 36,                // spec 7: the newest 36 portraits are kept
+    keep: 36,                // spec 7: 36 portraits are kept: the first (pinned) and the newest 35
+    // "Since your first" (2026-10-15 spec 4.2): a change counts as clear only at least this big.
+    // GUESS, the designer's judgement, not a study: a gain of 1 of 10 sits inside a normal
+    // day's wobble. Recalibrate once the owner has 5+ portraits. Units: notes, of 10, cents,
+    // of 10, seconds, of 24, of 6.
+    clear: { range: 2, on: 2, away: 8, steady: 2, lock: 0.3, tunes: 3, shapes: 2 },
     reuseRangeHours: 24,     // spec 4.1: a range measured this recently may be used again
     soonDays: 7,             // spec 4.2: under this, "Voices change slowly" is shown
     // Step 2, your easy note (spec 4.3).

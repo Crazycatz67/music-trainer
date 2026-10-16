@@ -74,6 +74,19 @@
 .sn-hardest { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .sn-practise-hard { margin-left: var(--s2); min-height: 0; padding-block: 0; }
 .sn-practise-hard[hidden] { display: none; }
+/* Best key (best-key spec 3.5): the advice may be long, so it wraps rather than cut a number;
+   Undo / Use it are quiet buttons with a 24 px target (40 px at narrow widths, below). */
+.sn-plate-fit { white-space: normal; }
+.sn-plate-fit .dv-fit { white-space: normal; transition: opacity var(--d-quick) ease; }
+.sn-key-btn { margin-left: var(--s2); min-height: 24px; min-width: 24px; padding-block: 0; }
+.sn-key-btn[hidden] { display: none; }
+/* The octave that suits this voice best: a 6 px dot under its word, in --muted (no colour
+   carries fit; the title says it in words). */
+.sn-octave .segment.sn-octave-best::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--muted); }
+@media (max-width: 760px) {
+  .sn-key-btn { min-height: 40px; margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .sn-plate-fit .dv-fit { transition: none; } }
 /* Difficulty marks (difficulty-view.js). Never gold, never accent: the treads are --muted,
    their outlines --line-strong (3:1 or more on every surface, both themes; spec 6). */
 .dv-rating, .dv-fit { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; vertical-align: middle; }

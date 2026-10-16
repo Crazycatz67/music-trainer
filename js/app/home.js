@@ -43,8 +43,8 @@ import { parseRoute, sheetOpen } from './shell.js';
 import { HOME_ROUTE, frameOf, moveFor, placeOf } from './skyroutes.js';
 import { glowShape, glowWords, lastGlow, takeGlow } from './takeglow.js';
 
-const LADDER = ['range', 'matchhold', 'constellation'];   // the Ladder's exercises that exist
-const LADDER_STARS = 6;                                   // one star per exercise, built or not
+const LADDER = ['range', 'matchhold', 'constellation', 'star-steps', 'leaps'];   // the Ladder's exercises that exist
+const LADDER_STARS = 8;                                   // one star per exercise, built or not
 const MIC_LIVE = new Set(['waiting', 'checking', 'on']);
 const FADE_MS = 200;
 // The longest glide a press on Start may wait behind (further than this the sky fades

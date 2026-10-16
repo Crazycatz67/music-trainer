@@ -62,7 +62,9 @@
 //       }
 //       octave is a whole number within +-CHART.maxOctaves; it moves the guide and the drone.
 //       duration and every time match songFromChart with the same tempoScale.
-//   renderPlan(plan, sampleRate, synth) -> {
+//   renderPlan(plan, sampleRate, synth, { guideTimbre }) -> {
+//       guideTimbre: any synth timbre (timbreFor(settings tone)) for the melody only; default
+//       CHART.guide.timbre. The drone and the clicks keep theirs.
 //         duration, sampleRate,
 //         backing  { channels: [Float32Array, Float32Array], sampleRate }   for player.load
 //         guide    { samples: Float32Array, channels: [the same twice], sampleRate }   for
@@ -297,7 +299,7 @@ export function guidePlan(timeline, { octave = 0, tempoScale = 1 } = {}) {
   return { duration: p.duration, octave: octaveOf(octave), tempoScale: p.speed, key, guide, backing, clicks };
 }
 
-export function renderPlan(plan, sampleRate, synth) {
+export function renderPlan(plan, sampleRate, synth, { guideTimbre } = {}) {
   if (!(isNum(sampleRate) && sampleRate > 0)) throw new RangeError(`chartsong: the sample rate must be above 0, got ${sampleRate}`);
   if (!synth || typeof synth.renderTone !== 'function') throw new TypeError('chartsong: renderPlan needs the synth ({ renderTone } of js/synth.js)');
   if (!plan || !(isNum(plan.duration) && plan.duration > 0)) throw new TypeError('chartsong: renderPlan needs a plan from guidePlan');
@@ -314,7 +316,7 @@ export function renderPlan(plan, sampleRate, synth) {
     for (let i = Math.max(0, -at); i < samples.length && at + i < n; i++) into[at + i] += samples[i];
   };
   const G = CHART.guide, B = CHART.backing;
-  for (const e of plan.guide || []) mix(guide, e, { midi: e.midi, timbre: G.timbre, gain: G.gain, attack: G.attackSec, release: G.releaseSec });
+  for (const e of plan.guide || []) mix(guide, e, { midi: e.midi, timbre: guideTimbre ?? G.timbre, gain: G.gain, attack: G.attackSec, release: G.releaseSec });
   for (const e of plan.backing || []) mix(backing, e, { midi: e.midi, timbre: B.timbre, gain: e.gain, attack: B.attackSec, release: B.releaseSec });
   for (const e of plan.clicks || []) mix(backing, e, { hz: e.hz, timbre: 'sine', gain: e.gain, attack: 0.002, release: e.dur / 2 });
   const level = (buf) => {

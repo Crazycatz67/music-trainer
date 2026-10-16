@@ -27,6 +27,7 @@
 <link rel="stylesheet" href="css/longnote.css">
 <link rel="stylesheet" href="css/eyesclosed.css">
 <link rel="stylesheet" href="css/glide.css">
+<link rel="stylesheet" href="css/steps.css">
 <link rel="stylesheet" href="css/ownvoice.css">
 <link rel="stylesheet" href="css/backup.css">
 <link rel="stylesheet" href="css/coach.css">
@@ -96,8 +97,10 @@
   import { mountEyesClosed } from './js/app/exercises/eyesclosed.js';
   import { mountGlide } from './js/app/exercises/glide.js';
   import { mountSiren } from './js/app/exercises/siren.js';
+  import { mountStarSteps, mountLeaps } from './js/app/exercises/steps.js';
   import { portraitWords, readPortraits } from './js/app/voicecheck.js';
   import { mountPortrait } from './js/app/portrait.js';
+  import { mountSinceFirst } from './js/app/sincefirst.js';
   import { exerciseRange, figureRange, readRange } from './js/app/range.js';
   import { mountSetup, setupStart } from './js/app/setup.js';
   import { createSessions } from './js/app/sessions.js';
@@ -185,7 +188,9 @@
         placeholderScreens.progress(view, ctx);
         let checks = [];
         try { checks = readPortraits(storage).checks || []; } catch { /* nothing saved, or storage is closed */ }
-        if (!checks.length) return null;
+        // "Since your first" goes first and replaces "Nothing to show yet" in every state.
+        const since = mountSinceFirst(view, { checks, storage, noteStyle: settings.get('noteNames') });
+        if (!checks.length) return since.destroy;
         const row = document.createElement('div');
         row.className = 'card-grid';
         const title = document.createElement('h2');
@@ -213,7 +218,7 @@
           } catch { cell.remove(); }
         }
         if (!row.children.length) { title.remove(); row.remove(); } else if (empty) empty.remove();
-        return null;
+        return since.destroy;
       },
       coach(view, ctx) {
         daily.shown('coach', ctx.param);
@@ -262,6 +267,11 @@
         if (kind === 'glide' || kind === 'siren') {
           // Showing it asks for nothing: the microphone waits for the singer's own press.
           const screen = (kind === 'glide' ? mountGlide : mountSiren)(view, { shell, micflow, settings, sessions, range: exerciseRange(saved) });
+          return () => screen.destroy();
+        }
+        if (kind === 'star-steps' || kind === 'leaps') {
+          // Showing it asks for nothing: the microphone waits for Start (one ask per round).
+          const screen = (kind === 'star-steps' ? mountStarSteps : mountLeaps)(view, { shell, micflow, settings, storage, sessions, range: exerciseRange(saved) });
           return () => screen.destroy();
         }
         if (ctx.param !== 'match') return placeholderScreens.practice(view, ctx);

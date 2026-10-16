@@ -126,14 +126,16 @@ import { bestAny, readBests, retryNudge, saveBests, updateBests } from './song/g
 import { letterWords, takeResults, takeWords } from './song/resultsmodel.js';
 import { medallionModel, mountMedallion, wholePercent } from './song/medallion.js';
 import { resultsView } from './song/resultsview.js';
-import { createSynth } from '../synth.js';
+import { createSynth, renderTone, samplesReady, timbreFor } from '../synth.js';
 import { songsSettings } from './singnow-service.js';
+import { keyAdvice, movedWords } from './song/bestkey.js';
 import { LEVELS, difficultyOf, inSpans, judgedSpans, lagScale, levelsOffered, rangeFit, recommendNext } from './song/difficulty.js';
 import { DIFFICULTY } from './song/difficulty.config.js';
 import { GRADES } from './song/grades.config.js';
 import { badgeLevel, bestsId, entryFit, fadeK, fitEl, noteLook, fitView, levelCard, levelLine, nextStep, pickLevel as pickLevelFor, ratingEl, ratingView } from './song/difficulty-view.js';
 import { readRange } from './range.js';
 import { keepGlow } from './takeglow.js';
+import { chartOpen, easiestFirst, isChart } from './song/chartplay.js';
 
 // ---------------------------------------------------------------- numbers and words
 // Moved to singnow-words.js (pure, Node-safe); every name this file exported is re-exported.
@@ -157,6 +159,9 @@ export function songStar(e, now = new Date()) {
 // One visit to the Songs screen (spec 3.4). Everything made here is undone by destroy():
 // the app's micflow and service outlive the screen, so a listener or frame hook left
 // behind would keep a dead screen drawing during the next exercise.
+// How long a demo's first open waits for the recorded "oo" before singing its melody in 'voice'.
+const CHART_OOHS_WAIT_MS = 2000;
+
 export function mountSongs(root, { shell, micflow, settings, storage, service, songId = null, go: goTo = null, hooks: given = {} }) {
   // goTo, not go: the model download below is a hoisted `function go()` in this scope and
   // would shadow the option (then Sing ran the download instead of opening the song).
@@ -245,7 +250,11 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   const $notice = h('p', { class: 'reason sn-notice', hidden: true });
   const $songs = h('ul', { class: 'sn-songs star-rows card', hidden: true });
   const $empty = h('p', { class: 'reason' }, 'No songs yet. Drop one above: your own file, any length up to 12 minutes.');
-  $lib.append(h('h1', { id: 'sn-lib-title', tabindex: '-1' }, 'Your songs'), $drop, $file, $wordsNote, $need, $notice, $queue, h('h2', null, 'My songs'), $empty, $songs);
+  // The bundled charts (bug 84): a tune to sing at once, played by the app itself.
+  const $demoHead = h('h2', { hidden: true }, 'Demo songs');
+  const $demoNote = h('p', { class: 'reason sn-demo-note', hidden: true }, 'Old tunes free for anyone, easiest first. The app plays the melody for you to follow.');
+  const $demos = h('ul', { class: 'sn-songs sn-demos star-rows card', hidden: true, 'aria-label': 'Demo songs' });
+  $lib.append(h('h1', { id: 'sn-lib-title', tabindex: '-1' }, 'Your songs'), $drop, $file, $wordsNote, $need, $notice, $queue, h('h2', null, 'My songs'), $empty, $songs, $demoHead, $demoNote, $demos);
 
   // ---- sing screen
   const $title = h('h1', { id: 'sn-song-title', tabindex: '-1' }, '');
@@ -265,11 +274,18 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   // its ::before) but not segmented(): that counts every option and has no stopped-only lock.
   const $level = h('span', { class: 'segmented sn-level', role: 'radiogroup', 'aria-label': 'Level', hidden: true, onkeydown: (e) => levelKey(e) }, ...$levelOpts);
   const $levelKey = h('kbd', { class: 'keycap sn-level-key', hidden: true }, 'D');
-  const $plateB = h('p', { class: 'reason sn-plate-b' }, $plateFit, $hardest, $practiseHard, $level, $levelKey);
+  // Best key (spec 3.2 b): Undo after the app moved an unset song, Use it when another octave
+  // fits better. Quiet buttons; both wait while a take, count-in or loop runs (spec 3.3 step 6).
+  const $keyUndo = h('button', { class: 'btn btn-quiet btn-small sn-key-btn', type: 'button', dataset: { act: 'key-undo' }, hidden: true, onclick: () => keyUndo() }, 'Undo');
+  const $keyUse = h('button', { class: 'btn btn-quiet btn-small sn-key-btn', type: 'button', dataset: { act: 'key-use' }, hidden: true, onclick: () => keyUse() }, 'Use it');
+  // The song the app moved on this visit and the octave it came from; the Undo shows only then.
+  let keyMoved = null;
+  const $plateB = h('p', { class: 'reason sn-plate-b' }, $plateFit, $keyUndo, $keyUse, $hardest, $practiseHard, $level, $levelKey);
   const $levelWords = h('p', { class: 'reason sn-level-words', hidden: true }, '');
-  let plate = { hardest: -1 };
+  let plate = { hardest: -1, advice: null };
   // My songs as the library last listed them: the results panel's Next up reads it (spec 3.5).
   let libEntries = [];
+  let chartSound = null; // { key, made } the last chart rendered (chartplay.chartOpen); key = song + tone
   // The open song's level: `offered` from levelsOffered (easiest first; [] without a chart),
   // `judged` the spans the judge counts (null = every note, Hard's and a recording's way).
   let level = 'hard', offered = [], judged = null;
@@ -511,53 +527,64 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
 
   async function paintLibrary() {
     const got = await store.list({ sort: 'date' });
-    const mine = got.groups.mine;
-    libEntries = mine;
+    // A chart the owner analysed is theirs (My songs, newest first); the bundled charts are
+    // the Demo songs, easiest first (difficulty spec 3.1, bug 84).
+    const when = (e) => Date.parse(e.addedAt) || 0;
+    const mine = [...got.groups.mine, ...got.groups.charts].sort((a, b) => when(b) - when(a));
+    const demos = easiestFirst(got.groups.demo);
     const bests = readBests(storage);
     const voice = readRange(storage);
     // Next up (difficulty spec 3.1): one signpost in the whole list, the song recommendNext
     // picks among the rated ones (a recording with no chart has no rating yet, spec 5).
-    const fits = new Map(mine.map((e) => [e.id, entryFit(e, voice)]));
-    const next = recommendNext(mine.filter((e) => Number.isFinite(e.rating)).map((e) => {
+    const all = [...mine, ...demos];
+    libEntries = all; // the results' Next up picks among every song listed, demos too
+    const fits = new Map(all.map((e) => [e.id, entryFit(e, voice)]));
+    const next = recommendNext(all.filter((e) => Number.isFinite(e.rating)).map((e) => {
       const top = bestAny(bests, e.id), f = fits.get(e.id);
       return { id: e.id, title: e.title, rating: e.rating, best: (top && top.result && top.result.letter) || null, personal: f ? f.personal : undefined };
     }));
-    const rows = [];
-    for (const e of mine) {
-      const kept = e.takes ? await store.takesOf(e.id) : [];
-      const top = bestAny(bests, e.id);
-      const star = songStar(e);
-      // A star row inside the one My songs panel (the list is the .card, not each song).
-      rows.push(h('li', { class: 'sn-song star-row', dataset: { song: e.id, state: star.state } },
-        h('span', { class: 'star-mark', 'aria-hidden': 'true' }),
-        h('div', { class: 'sn-song-main star-row-main' },
-          h('strong', { class: 'sn-song-title' }, e.title), e.artist && h('span', { class: 'sn-song-artist' }, e.artist),
-          factsLine(e, fits.get(e.id)),
-          songBadge(bests, e)),
-        h('span', { class: 'star-row-word', dataset: { star: star.state } }, star.words),
-        h('div', { class: 'action-row' },
-          h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'sing' }, disabled: !e.hasBacking, onclick: () => (goTo ? goTo(`#/songs/${encodeURIComponent(e.id)}`) : openSong(e.id)) }, 'Sing'),
-          h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'rename' }, onclick: () => renameSong(e) }, 'Rename'),
-          h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'remove' }, onclick: () => removeSong(e) }, 'Remove'),
-          next && next.id === e.id ? h('span', { class: 'sn-chip dv-next', dataset: { chip: 'next' } }, 'Next up', icon('chevron', 16)) : null),
-        kept.length ? h('ul', { class: 'sn-takes', 'aria-label': `Takes of ${e.title}` }, kept.map((t) => h('li', { class: 'sn-take', dataset: { take: t.id } },
-          h('span', null, [`Take · ${dateWords(t.createdAt)} · ${lengthWords(t.seconds)}${t.finished === false ? ' · cut short' : ''}`, ...takeRowWords(t)].join(' · ')),
-          top && top.result.takeId === t.id ? h('span', { class: 'sn-chip', dataset: { tone: top.result.silver ? 'silver' : 'gold', chip: 'best' } }, 'Best') : null,
-          h('button', { class: 'btn btn-secondary btn-small', type: 'button', dataset: { act: 'play-take' }, onclick: () => openSong(e.id, { takeId: t.id }) }, icon('play', 16), ' Play'),
-          h('button', { class: 'btn btn-quiet btn-small', type: 'button', dataset: { act: 'delete-take' }, onclick: () => deleteTake(t) }, 'Delete')))) : null));
-    }
-    $songs.replaceChildren(...rows);
+    const rowsOf = async (list) => {
+      const rows = [];
+      for (const e of list) rows.push(songRow(e, { kept: e.takes ? await store.takesOf(e.id) : [], top: bestAny(bests, e.id), fit: fits.get(e.id), next: !!next && next.id === e.id, bests }));
+      return rows;
+    };
+    $songs.replaceChildren(...await rowsOf(mine));
+    $demos.replaceChildren(...await rowsOf(demos));
     $songs.hidden = mine.length === 0; // an empty panel would be a blank box under "My songs"
+    $demoHead.hidden = $demoNote.hidden = $demos.hidden = demos.length === 0;
     $empty.hidden = mine.length > 0;
     $empty.textContent = got.unavailable ? 'This browser’s storage cannot be opened (a private window?), so songs cannot be kept here.' : 'No songs yet. Drop one above: your own file, any length up to 12 minutes.';
     $drop.classList.toggle('is-small', mine.length > 0);
+  }
+
+  // One song's star row. A demo song cannot be renamed or removed (the store refuses), so it
+  // shows Sing only; a chart has no file sound and is sung to the app's own melody.
+  function songRow(e, { kept, top, fit, next, bests }) {
+    const star = songStar(e), demo = e.kind === 'demo';
+    return h('li', { class: 'sn-song star-row', dataset: { song: e.id, state: star.state, kind: e.kind } },
+      h('span', { class: 'star-mark', 'aria-hidden': 'true' }),
+      h('div', { class: 'sn-song-main star-row-main' },
+        h('strong', { class: 'sn-song-title' }, e.title), e.artist && h('span', { class: 'sn-song-artist' }, e.artist),
+        factsLine(e, fit),
+        songBadge(bests, e)),
+      h('span', { class: 'star-row-word', dataset: { star: star.state } }, star.words),
+      h('div', { class: 'action-row' },
+        h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'sing' }, disabled: !(e.hasBacking || isChart(e)), onclick: () => (goTo ? goTo(`#/songs/${encodeURIComponent(e.id)}`) : openSong(e.id)) }, 'Sing'),
+        demo ? null : h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'rename' }, onclick: () => renameSong(e) }, 'Rename'),
+        demo ? null : h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'remove' }, onclick: () => removeSong(e) }, 'Remove'),
+        next ? h('span', { class: 'sn-chip dv-next', dataset: { chip: 'next' } }, 'Next up', icon('chevron', 16)) : null),
+      kept.length ? h('ul', { class: 'sn-takes', 'aria-label': `Takes of ${e.title}` }, kept.map((t) => h('li', { class: 'sn-take', dataset: { take: t.id } },
+        h('span', null, [`Take · ${dateWords(t.createdAt)} · ${lengthWords(t.seconds)}${t.finished === false ? ' · cut short' : ''}`, ...takeRowWords(t)].join(' · ')),
+        top && top.result.takeId === t.id ? h('span', { class: 'sn-chip', dataset: { tone: top.result.silver ? 'silver' : 'gold', chip: 'best' } }, 'Best') : null,
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', dataset: { act: 'play-take' }, onclick: () => openSong(e.id, { takeId: t.id }) }, icon('play', 16), ' Play'),
+        h('button', { class: 'btn btn-quiet btn-small', type: 'button', dataset: { act: 'delete-take' }, onclick: () => deleteTake(t) }, 'Delete')))) : null);
   }
 
   // The row's facts (difficulty spec 3.1): length · range · rating · fit, one " · " between
   // each, the rating and fit as their own marks so the glyph and icon stay beside their words.
   function factsLine(e, fit) {
     const parts = [lengthWords(e.duration), rangeWords(e.range), ratingEl(h, ratingView(e.rating)), fitEl(h, fitView(fit)),
-      e.hasWords ? 'has words' : null, e.hasBacking ? null : 'its sound is missing: drop the file again'].filter(Boolean);
+      e.hasWords ? 'has words' : null, e.hasBacking || isChart(e) ? null : 'its sound is missing: drop the file again'].filter(Boolean);
     return h('span', { class: 'reason sn-facts' }, ...parts.flatMap((p, i) => (i ? [' · ', p] : [p])));
   }
 
@@ -810,11 +837,27 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     try {
       stopAll('stop');
       await ensureAudio();
-      const [entry, audio, line] = [await store.get(id), await store.audio(id), await store.curve(id)];
+      let [entry, audio, line] = [await store.get(id), await store.audio(id), await store.curve(id)];
+      // A demo song or chart has notes and no sound (bug 84): its pitch line, phrases and a
+      // synthesised melody (the guide) over a soft drone (the backing) come from the notes.
+      if (isChart(entry) && entry.timeline && !(audio && audio.backing)) {
+        // The melody is sung in the singer's Reference tone. The recorded "oo" loads lazily and
+        // a render is kept, so wait for it (at most CHART_OOHS_WAIT_MS) rather than keep a
+        // 'voice' render for good; past the cap, or if it failed, 'voice' it is.
+        const tone = settings.get('tone');
+        if (tone === 'oohs') await Promise.race([samplesReady(), new Promise((r) => setTimeout(r, CHART_OOHS_WAIT_MS))]);
+        const guideTimbre = timbreFor(tone);
+        // Keyed on the resolved timbre too: a 'voice' stand-in is re-rendered once the "oo" is in.
+        const key = `${id}|${tone}|${typeof guideTimbre === 'string' ? guideTimbre : 'own'}`;
+        const made = chartSound && chartSound.key === key ? chartSound.made : chartOpen(entry, { sampleRate: ctx.sampleRate, synth: { renderTone }, guideTimbre });
+        chartSound = { key, made }; // one kept: Back and Sing again does not render twice
+        ({ song: entry, curve: line, audio } = { ...made, song: { ...made.song, octave: entry.octave, octaveSet: entry.octaveSet, key: entry.key } });
+      }
       if (!entry || !audio || !audio.backing) { toast('This song could not be opened. Drop its file again.'); paintLibrary(); return false; }
       if (recorder) recorder.destroy();
       await player.load(audio.backing, { id });
       song = entry; curve = line; phrases = entry.phrases || []; octave = entry.octave || 0;
+      fitOnOpen(entry);
       hasGuide = !!audio.vocal;
       // This song's own three levels, before a sample of it is played.
       levels = mixFor(id);
@@ -853,6 +896,50 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     } finally { opening = false; }
   }
 
+  // ---- best key (spec 3.3). A demo song has no stored record: its chosen octave lives in the
+  // page prefs, and being there is what "set by the singer" means for it.
+  function demoOctaves() {
+    if (!prefs.octaves || typeof prefs.octaves !== 'object' || Array.isArray(prefs.octaves)) prefs.octaves = {};
+    return prefs.octaves;
+  }
+  const keyKind = (e) => (e && e.kind === 'file' ? 'file' : 'chart');
+  // Step 1: an unset song opens at the octave that suits the saved range, before the first
+  // paint so nothing jumps. Nothing sounds; the mic stays off. A song the singer set is left alone.
+  function fitOnOpen(entry) {
+    keyMoved = null;
+    const demo = entry.kind === 'demo', kept = demoOctaves();
+    if (demo && Number.isInteger(kept[entry.id])) octave = entry.octave = clamp(kept[entry.id], -1, 1);
+    const voice = readRange(storage);
+    if ((demo ? Object.hasOwn(kept, entry.id) : entry.octaveSet) || !voice) return;
+    const a = keyAdvice(entry, voice, { current: octave, kind: keyKind(entry) });
+    if (a.code === 'no-range' || a.code === 'no-notes' || a.best === octave) return;
+    keyMoved = { id: entry.id, from: octave };
+    octave = entry.octave = a.best;
+    if (!demo) store.update(entry.id, { octave: a.best });
+    $live.textContent = movedWords(a.best);
+  }
+  const octaveFocus = () => $octaveSlot.querySelector('[aria-checked="true"]') || $octaveSlot.querySelector('button') || $octaveSlot;
+  function keyUndo() {
+    if (!song || !keyMoved || keyMoved.id !== song.id || $keyUndo.disabled) return;
+    setOctave(keyMoved.from);
+    (!$keyUse.hidden ? $keyUse : octaveFocus()).focus();
+  }
+  function keyUse() {
+    const a = plate.advice;
+    if (!song || !a || a.use == null || $keyUse.disabled) return;
+    setOctave(a.use);
+    octaveFocus().focus();
+  }
+  const keyBusy = () => recActive() || !!count || playing();
+  function paintKeyBusy() {
+    const busy = keyBusy();
+    for (const b of [$keyUndo, $keyUse]) {
+      if (b.disabled === busy && b.dataset.painted) continue;
+      b.disabled = busy; b.dataset.painted = '1';
+      b.title = busy ? 'After this take' : b.dataset.title || '';
+    }
+  }
+
   // Rows show the song's own (Hard) rating; the plate shows the selected level's. A recording with no chart: artist only, the fit from its
   // traced range, no hardest line (spec 5).
   function paintPlate() {
@@ -862,12 +949,23 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     try { d = chart ? difficultyOf(song, { level, range: voice || null }) : null; } catch { d = null; }
     const fit = d ? (d.fit || rangeFit(song, null)) : entryFit(song, voice, { link: true });
     $plateRating.replaceChildren(...(d ? [' · ', ratingEl(h, ratingView(d.rating))] : []));
-    $plateFit.replaceChildren(...[fitEl(h, fitView(fit))].filter(Boolean));
+    // Line B names the octave in use and the better one (best-key spec 3.4): rangeFit alone
+    // describes the song after a move nothing has applied.
+    const advice = song && voice ? keyAdvice(song, voice, { current: octave, kind: keyKind(song) }) : null;
+    plate.advice = advice && advice.now ? advice : null;
+    const shown = plate.advice ? { ...advice.now, words: advice.words, title: advice.title || advice.words } : fit;
+    $plateFit.replaceChildren(...[fitEl(h, fitView(shown))].filter(Boolean));
+    $keyUndo.hidden = !(keyMoved && song && keyMoved.id === song.id && plate.advice);
+    $keyUndo.dataset.title = $keyUndo.hidden ? '' : movedWords(octave);
+    $keyUse.hidden = !(plate.advice && plate.advice.use != null);
+    $keyUse.dataset.title = $keyUse.hidden ? '' : plate.advice.title;
+    delete $keyUndo.dataset.painted; delete $keyUse.dataset.painted;
+    paintKeyBusy();
     const hl = d && levelsOffered(song).length ? d.hardestLine : null;
     plate = { hardest: hl ? lineIndexAt(phrases, hl.t + 1e-3) : -1 };
     if (hl) {
       const text = String(hl.text || '').trim(), cut = text.length > 24 ? `${text.slice(0, 24).trimEnd()}…` : text;
-      $hardest.textContent = `${fit ? ' · ' : ''}Hardest line: ${cut ? `“${cut}” ` : `line ${hl.index + 1}, `}${hl.partWord}`;
+      $hardest.textContent = `${shown ? ' · ' : ''}Hardest line: ${cut ? `“${cut}” ` : `line ${hl.index + 1}, `}${hl.partWord}`;
       $hardest.title = text;
     } else { $hardest.textContent = ''; $hardest.removeAttribute('title'); }
   }
@@ -1683,10 +1781,15 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (!song || next === octave) return;
     octave = next;
     song.octave = next;
-    store.update(song.id, { octave: next });
+    // Any octave the singer picks (the control, Shift+Up/Down, Undo, Use it) is theirs: the app
+    // never auto-moves this song again (best-key spec 3.3 step 3).
+    song.octaveSet = true; keyMoved = null;
+    if (song.kind === 'demo') { demoOctaves()[song.id] = next; savePrefs(); }
+    else store.update(song.id, { octave: next, octaveSet: true });
     trail = [];
     counting = new Map();            // a line half counted against the old octave is dropped
     if (review) reviewFrames();      // the recorded line's colours are against the moved singer
+    paintPlate();
     paint();
   }
 
@@ -2089,11 +2192,17 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     $ways.dataset.silver = waysOn().noLine ? 'on' : 'off';
     $ways.disabled = locked;
     $waysWhy.textContent = locked ? WAYS_LOCKED : 'Kept for this song.';
-    if (octaveShown !== `${song.id}:${octave}`) {
-      octaveShown = `${song.id}:${octave}`;
-      $octaveSlot.replaceChildren(segmented({ label: 'Octave', value: octave, onChange: (v) => setOctave(Number(v)),
-        options: [{ value: -1, text: 'Down' }, { value: 0, text: 'As sung' }, { value: 1, text: 'Up' }] }));
+    const best = plate.advice ? plate.advice.best : null;
+    if (octaveShown !== `${song.id}:${octave}:${best}`) {
+      octaveShown = `${song.id}:${octave}:${best}`;
+      const seg = segmented({ label: 'Octave', value: octave, onChange: (v) => setOctave(Number(v)),
+        options: [{ value: -1, text: 'Down' }, { value: 0, text: 'As sung' }, { value: 1, text: 'Up' }] });
+      // The best octave for this voice wears a small dot (best-key spec 3.2 c).
+      const opt = best == null ? null : seg.querySelector(`[data-value="${best}"]`);
+      if (opt) { opt.classList.add('sn-octave-best'); const t = `${opt.textContent.trim()}, best fit for your voice`; opt.title = t; opt.setAttribute('aria-label', t); }
+      $octaveSlot.replaceChildren(seg);
     }
+    paintKeyBusy();
     $octaveWords.textContent = OCTAVE_WORDS[octave];
 
     if (review) {
