@@ -775,8 +775,30 @@ export const CONFIG = deepFreeze({
   },
 });
 
+// Skies: the Settings > Look choices (page-layout spec, section 4.2). A sky is a tone (dark or
+// light) plus its surfaces; the colours live in css/tokens.css, never here. Saved values from
+// before skies ('system', 'dusk', 'dawn') keep their meaning; anything unknown follows the Mac.
+// index.html's pre-paint script repeats resolveSky() in plain ES5 (it runs before modules);
+// tools/checks/themes.check.mjs holds the two to the same answers.
+export const SKIES = Object.freeze([
+  Object.freeze({ id: 'system', name: 'Follow my Mac', tone: null, line: 'Dusk or Dawn, as your Mac is set' }),
+  Object.freeze({ id: 'dusk', name: 'Dusk', tone: 'dark', line: 'Dark blue night' }),
+  Object.freeze({ id: 'dawn', name: 'Dawn', tone: 'light', line: 'Light morning' }),
+  Object.freeze({ id: 'nebula', name: 'Nebula', tone: 'dark', line: 'Violet night' }),
+  Object.freeze({ id: 'midnight', name: 'Midnight', tone: 'dark', line: 'Black, strongest contrast' }),
+]);
+
+// pick: the saved theme setting. light / moreContrast: the Mac's prefers-color-scheme: light
+// and prefers-contrast: more. Returns the sky to paint and its tone, always one of SKIES.
+// "Follow my Mac" in dark mode with more contrast is Midnight; in light mode it is Dawn.
+export function resolveSky(pick, { light = false, moreContrast = false } = {}) {
+  const chosen = SKIES.find((s) => s.id === pick && s.tone);
+  const theme = chosen ? chosen.id : light ? 'dawn' : moreContrast ? 'midnight' : 'dusk';
+  return { theme, tone: SKIES.find((s) => s.id === theme).tone };
+}
+
 export const SETTINGS_DEFAULTS = Object.freeze({
-  theme: 'system',           // 'system' | 'dusk' | 'dawn'
+  theme: 'system',           // 'system' | a SKIES id: 'dusk' | 'dawn' | 'nebula' | 'midnight'
   calm: null,                // null = follow the system's reduced-motion setting
   pitchView: 'line',         // 'line' | 'meter'
   rewardSounds: true,
@@ -789,5 +811,6 @@ export const SETTINGS_DEFAULTS = Object.freeze({
   micDeviceId: null,
   micIntroDone: false,
   aurora: true,              // the curtain of light above the voice line (living-sky spec 6.6)
+  skyLines: 'all',          // 'all' | 'tonight' | 'off': the real constellation lines on the home sky (living-sky 2.3 rule 4)
   imagine: true,             // "Pause to imagine the note": the silent beat before the ring opens
 });

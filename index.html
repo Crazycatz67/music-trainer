@@ -6,13 +6,17 @@
 <title>Music trainer</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%275%27 fill=%27%2338bdf8%27/%3E%3Cpath d=%27M9 17V7l7-2v9%27 fill=%27none%27 stroke=%27%2306202c%27 stroke-width=%272%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
 <script>
-  // Set the theme before the first paint, so a Dawn user never sees a dark page blink past.
-  // shell.js keeps it up to date afterwards. Same storage key as createSettings().
+  // Set the sky and its tone before the first paint, so a Dawn user never sees a dark page
+  // blink past. shell.js keeps them up to date afterwards. Same storage key as createSettings();
+  // the same answers as resolveSky() in js/app/config.js (themes.check.mjs compares the two).
   (function () {
-    var theme = null;
+    var theme = null, mq = function (q) { return window.matchMedia(q).matches; };
     try { theme = (JSON.parse(localStorage.getItem('music-trainer.settings.v1') || '{}') || {}).theme; } catch (e) { /* use the system setting */ }
-    if (theme !== 'dusk' && theme !== 'dawn') theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'dawn' : 'dusk';
+    if (theme !== 'dusk' && theme !== 'dawn' && theme !== 'nebula' && theme !== 'midnight') {
+      theme = mq('(prefers-color-scheme: light)') ? 'dawn' : mq('(prefers-contrast: more)') ? 'midnight' : 'dusk';
+    }
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.tone = theme === 'dawn' ? 'light' : 'dark';
   })();
 </script>
 <link rel="stylesheet" href="css/tokens.css">
@@ -144,7 +148,7 @@
   let homeApi = null, songsLine = null, songService = null;
   const loadSongMode = () => songMode || (songMode = import('./js/app/singnow.js')
     .then(async (screen) => {
-      const service = (await import('./js/app/singnow-service.js')).createSongService({ storage });
+      const service = (await import('./js/app/singnow-service.js')).createSongService({ storage, hooks: window.__singnowHooks || {} });
       songService = service;
       service.onReady((n) => { songsLine = lyreLine(n); if (homeApi) homeApi.setSongsLine(songsLine); });
       return { screen, service };
@@ -310,7 +314,7 @@
   const gl = (lab && lab.gl) || new URLSearchParams(location.search).get('gl') || 'auto';
   import(lab && lab.homeUrl ? lab.homeUrl : './js/app/home.js').then(({ mountHome }) => {
     const home = mountHome(document.getElementById('sky-root'), {
-      shell, sessions, daily, plan, micflow, storage, gl: ['off', 'soft'].includes(gl) ? gl : 'auto',
+      shell, sessions, daily, plan, micflow, storage, lines: settings.get('skyLines') !== 'off', gl: ['off', 'soft'].includes(gl) ? gl : 'auto',
       startSetup: () => !setupPutOff && setupStart(storage),
       onFrame: lab && lab.onFrame,
     });

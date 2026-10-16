@@ -70,8 +70,8 @@
 /* Dawn: no additive light. A flat disc behind the ring, the letter is ink. */
 /* Delilah 2026-10-14, by eye: a flat disc read as a muddy coin; the soft edge keeps the
    letter on full glow (dark gold on it 4.0 : 1, large bold text) and lets the ring lead. */
-[data-theme="dawn"] .mg-bloom { inset: 0; background: radial-gradient(closest-side, var(--gold-glow) 72%, transparent); }
-[data-theme="dawn"] .mg[data-tone="silver"] .mg-bloom { background: var(--mg-silver-glow); }
+[data-tone="light"] .mg-bloom { inset: 0; background: radial-gradient(closest-side, var(--gold-glow) 72%, transparent); }
+[data-tone="light"] .mg[data-tone="silver"] .mg-bloom { background: var(--mg-silver-glow); }
 
 .mg-under { margin: 0; font: var(--t-small); color: var(--text); text-align: center; white-space: nowrap; }
 /* STYLE.md's --font-num is not a token in tokens.css: numbers are set the way singnow.css sets them. */
@@ -309,3 +309,16 @@
 .sn-readout[data-kind="byear"] { border-left-color: var(--silver); }
 .sn-readout[data-kind="byear"] strong { color: var(--silver); }
 .sn-count-ways { font: var(--t-small); color: var(--muted); min-height: 1lh; }
+
+/* Difficulty spec 3.5: the one next step (#sn-next) is the panel's last control in the DOM,
+   placed with grid only. Wide: the right end of the advice row, the advice shrinking to make
+   room. Under 900 px: after the buttons row. */
+.sn-end #sn-next { grid-column: -2 / -1; grid-row: 1; justify-self: end; align-self: start; white-space: nowrap; }
+.sn-end:has(#sn-next) .sn-end-advice { grid-column: 1 / -2; }
+@media (max-width: 899px) {
+  .sn-end #sn-next { grid-column: 1 / -1; grid-row: 5; justify-self: start; }
+  .sn-end:has(#sn-next) .sn-end-advice { grid-column: 1 / -1; }
+}
+/* The level word in the medallion's chip line: a word chip, no glyph. */
+.mg-level { font: var(--t-small); font-weight: 600; color: var(--text); }
+.sn-song-best-level { display: block; font: var(--t-small); }

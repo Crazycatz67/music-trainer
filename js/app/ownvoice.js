@@ -4,9 +4,10 @@
 // its notes "in your voice" at any pitch (Settings > Reference tone > My voice, tone 'mine').
 //
 // Why: most poor singers match their own recorded voice better than a synth tone (Hutchins &
-// Peretz 2012; docs/team-log/reports/2026-10-13-ricky-feature-ideas.md). What is kept is NOT a
-// recording, and never will be (owner, 2026-10-15): only 20 [hz, dB] pairs. Whether a harmonic copy sounds enough like "me" to carry
-// the benefit is unproven (the study used recordings) and can only be judged by ear.
+// Peretz 2012; docs/team-log/reports/2026-10-13-ricky-feature-ideas.md). Since My voice v3 the
+// part also keeps up to 3 short takes (about 1 s each, low / middle / high, js/app/myvoice.js),
+// in this browser only, which the synth replays at any nearby pitch (PSOLA); the 20 [hz, dB]
+// pairs remain the fallback for notes out of the takes' reach.
 //
 // The top half is PURE and imports in Node (tools/checks/ownvoice.check.mjs).
 //
@@ -60,21 +61,23 @@
 //   timeout, Cancel, Esc, any sheet, the page hidden or left, destroy()), before the sums are
 //   done. It is not read while the home note plays, as in Match and hold's listen phase.
 //   Events: 'mt:ownvoice' on document, detail { event, reason?, harmonics? }.
-//       event: start | tone | capture | saved | refused | cancel
+//       event: start | tone | capture | saved | refused | cancel | recorded | recordrefused | played | erased
+//   teach(midi?) copies midi (Replace), else the next of middle / low / high (nextSlot).
 
-import { timbreFor } from '../synth.js';
+import { timbreFor, useOwnRecordings } from '../synth.js';
+import { RECORDING, keepRecordings, createStitcher, prepareRecording, addRecording, eraseRecordings, current as currentRecordings, refresh as refreshRecordings } from './myvoice.js';
 import FFT from '../../vendor/fft.js-4.0.4/fft.js';
 import { CONFIG, SETTINGS_DEFAULTS } from './config.js';
-import { midiToHz } from '../notes.js';
+import { midiToHz, noteName } from '../notes.js';
 import { OWNVOICE_KEY, OWNVOICE_VERSION, envelopeFromHarmonics, playableEnvelope, playableTimbre, readOwnVoice } from './ownvoicekey.js';
 import { h, icon, segmented } from './shell.js';
 
 // ---------------------------------------------------------------- pure
 
 export const REFUSALS = Object.freeze({
-  'no-note': 'I could not hear a note. Sing one steady ‘ah’ and try again.',
+  'no-note': 'I could not hear a note. Sing one steady ‘oo’ and try again.',
   clipped: 'That was too loud for the microphone. Move back a little and try again.',
-  unsteady: 'The note moved about. Hold one steady ‘ah’ and try again.',
+  unsteady: 'The note moved about. Hold one steady ‘oo’ and try again.',
   short: 'That was too short. Hold the note until the bar is full.',
   low: 'That note is too low to take apart. Try a slightly higher one.',
   noisy: 'There was too much noise around your voice. Try a quieter room, or move closer.',
@@ -225,11 +228,102 @@ export function saveOwnVoice(storage, result, nowIso = new Date().toISOString())
 
 export function clearOwnVoice(storage) {
   try { if (storage) storage.removeItem(OWNVOICE_KEY); } catch { /* nothing more to do */ }
+  if (typeof indexedDB !== 'undefined') eraseRecordings().catch(() => { /* nothing more to do */ });
+}
+
+// "My voice" v3: the recordings play for 'mine' on their own, with or without the v2 tone
+// colour. "Erase my data" stops them at once: deleting the database tells myvoice.js
+// (onversionchange), which drops its copy in memory. Browser only (shell.js imports this file
+// on every page), so Node checks of synth.js see no recordings.
+if (typeof indexedDB !== 'undefined') {
+  useOwnRecordings(() => currentRecordings());
+  refreshRecordings();
+}
+
+// The held note's own audio, for the recording: a second, long analyser on the capture tap
+// (32768 samples, about 0.7 s, is the longest an AnalyserNode holds; no extra getUserMedia,
+// no worklet) read on every voiced frame and stitched into the newest RECORDING.captureSec.
+// prepareRecording then keeps the steadiest second of it.
+export function createHeldKeeper(analyser, ctx, cfg = RECORDING) {
+  const stitch = createStitcher({ maxSamples: Math.round(cfg.captureSec * ctx.sampleRate) });
+  const data = new Float32Array(analyser.fftSize);
+  return {
+    push(frame) {
+      if (!frame.voiced) return;
+      analyser.getFloatTimeDomainData(data);
+      stitch.push(data);
+    },
+    best() {
+      const held = stitch.longest();
+      return held ? { data: held, rate: ctx.sampleRate } : null;
+    },
+  };
 }
 
 export const noteTimbre = (noteSound, record, plain = 'voice') => (noteSound === 'mine' && record && playableEnvelope(record.envelope) ? { envelope: record.envelope } : plain);
 
 export const NO_VOICE_YET = 'teach it your voice first.';
+
+// ---- the low / middle / high guide (pure). These belong in myvoice.js; they live here because
+// that file was locked to another editor when slice 2b was built (move them when it is free).
+// The three notes: a middle one (the home note, else the first take kept) and SLOT_SEMIS below
+// and above it, so PSOLA never stretches a take further than about half that.
+export const SLOT_SEMIS = 5;
+export const SLOTS = Object.freeze(['middle', 'low', 'high']);
+const SLOT_WORD = Object.freeze({ middle: 'middle', low: 'lower', high: 'higher' });
+function middleOf(kept, home) {
+  if (typeof home === 'number' && Number.isFinite(home)) return Math.round(home);
+  if (!kept || !kept.length) return null;
+  // The earliest take anchors it: by pitch, "middle" would move as the takes arrive.
+  const first = kept.reduce((a, b) => (String(b.at) < String(a.at) ? b : a));
+  return Math.round(first.midi);
+}
+const slotMidi = (slot, middle) => middle + (slot === 'low' ? -SLOT_SEMIS : slot === 'high' ? SLOT_SEMIS : 0);
+
+// nextSlot(kept, home) -> { slot, midi } | null: the first of middle, low, high with no take
+// within cfg.sameSemis. midi is null only with no home and nothing kept ("any comfortable
+// note"); the result is null when all three are kept.
+export function nextSlot(kept, home, cfg = RECORDING) {
+  const middle = middleOf(kept, home);
+  if (middle === null) return { slot: 'middle', midi: null };
+  for (const slot of SLOTS) {
+    const midi = slotMidi(slot, middle);
+    if (!(kept || []).some((k) => Math.abs(k.midi - midi) <= cfg.sameSemis)) return { slot, midi };
+  }
+  return null;
+}
+
+// guideNote(kept, home, midi?) -> the note teach() plays before listening, or null. With no
+// home note (no range saved) it is null whatever is kept: nothing is played and the headphones
+// are not asked about (v2's contract above; the v3 plan's "plays that note (home !== null)").
+// A first take is no proof the notes 5 semitones round it are safe to sing. midi: Replace.
+export function guideNote(kept, home, midi) {
+  if (typeof home !== 'number' || !Number.isFinite(home)) return null;
+  if (typeof midi === 'number' && Number.isFinite(midi)) return midi;
+  const next = nextSlot(kept, home);
+  // All three kept: Teach again goes over the middle one.
+  return next ? next.midi : nextSlot([], home).midi;
+}
+
+// slotOf(rec, kept, home) -> 'low' | 'middle' | 'high': the slot nearest the take (its label).
+export function slotOf(rec, kept, home) {
+  const middle = middleOf(kept, home) ?? Math.round(rec.midi);
+  return SLOTS.reduce((best, s) => (Math.abs(slotMidi(s, middle) - rec.midi) < Math.abs(slotMidi(best, middle) - rec.midi) ? s : best), 'middle');
+}
+
+// keptWords(kept, rec, home): what the singer reads after a take was kept (kept includes rec).
+export function keptWords(kept, rec, home) {
+  const next = nextSlot(kept, home);
+  return `Kept your ${SLOT_WORD[slotOf(rec, kept, home)]} note (${kept.length} of ${SLOTS.length}). `
+    + (next ? `Press Teach for a ${SLOT_WORD[next.slot]} note.` : 'All three are kept. Replace any of them under My recordings.');
+}
+
+// offNote(rec, target): words when the take is far from the note played, else ''. A take
+// kept anyway would fill the wrong slot and leave a gap PSOLA has to stretch across.
+export function offNote(rec, target, cfg = RECORDING) {
+  if (typeof target !== 'number' || Math.abs(rec.midi - target) <= cfg.sameSemis) return '';
+  return `you sang about ${noteName(rec.midi)} and the note played was ${noteName(target)}. Sing along with the note you hear.`;
+}
 
 // ---------------------------------------------------------------- browser: the choice and the teaching step
 
@@ -239,8 +333,8 @@ export function mountOwnVoice(host, {
   const O = config.ownVoice;
   const store = storage ?? (() => { try { return window.localStorage; } catch { return null; } })();
   let record = readOwnVoice(store);
-  let phase = 'idle', seq = 0, dead = false, says = '', saysRole = '', tone = null, collector = null, tap = null, offFrame = null, timer = 0;
-  let settle = null, barPct = -1, letting = false;
+  let phase = 'idle', seq = 0, dead = false, says = '', saysRole = '', tone = null, collector = null, tap = null, offFrame = null, timer = 0, keeper = null;
+  let settle = null, barPct = -1, letting = false, target = null, playing = null, kept = currentRecordings() || [];
 
   const choiceSlot = h('div', { class: 'ov-choice' });
   const teachBtn = h('button', { class: 'btn btn-secondary btn-small', type: 'button', 'aria-describedby': 'ov-says', onclick: () => teach() });
@@ -250,8 +344,13 @@ export function mountOwnVoice(host, {
   const bar = h('div', { class: 'level-bar ov-bar', role: 'progressbar', 'aria-label': 'Your voice heard so far', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, fill);
   const step = h('div', { class: 'ov-step', hidden: true }, h('p', { class: 'ov-words', role: 'status' }, stepIcon, stepWords), bar);
   const saysLine = h('p', { class: 'reason ov-says', id: 'ov-says', role: 'status' });
+  // "My recordings": the kept takes, each playable (only on a press) and replaceable.
+  const recList = h('ul', { class: 'ov-rec-list' });
+  const eraseBtn = h('button', { class: 'btn btn-quiet btn-small', type: 'button', onclick: () => eraseTakes() }, 'Erase my recordings');
+  const recs = h('div', { class: 'ov-recs', role: 'group', 'aria-label': 'My recordings', hidden: true },
+    h('p', { class: 'ov-recs-title' }, 'My recordings'), recList, eraseBtn);
   const el = h('section', { class: 'ownvoice', 'aria-label': 'Note sound' },
-    choiceSlot, h('div', { class: 'ov-actions' }, teachBtn, cancelBtn), step, saysLine);
+    choiceSlot, h('div', { class: 'ov-actions' }, teachBtn, cancelBtn), step, saysLine, recs);
   host.append(el);
 
   const emit = (event, more = {}) => document.dispatchEvent(new CustomEvent('mt:ownvoice', { detail: { event, ...more } }));
@@ -272,6 +371,13 @@ export function mountOwnVoice(host, {
     }));
   }
 
+  // No home note, so nothing is played: name the note in words (a little lower / higher than
+  // the first take) once one is kept.
+  function freeNoteWords() {
+    const next = kept.length ? nextSlot(kept, null) : null;
+    return next && next.slot !== 'middle' ? `a note a little ${SLOT_WORD[next.slot]} than your first` : 'any comfortable note';
+  }
+
   function paint() {
     const active = busy();
     teachBtn.replaceChildren(record ? 'Teach it again' : 'Teach it your voice');
@@ -282,18 +388,56 @@ export function mountOwnVoice(host, {
     const words = {
       asking: 'Waiting for the microphone.',
       tone: 'Listen to the note. The microphone waits until it ends.',
-      capture: `The microphone is on. Sing ‘ah’ on ${home === null ? 'any comfortable note' : 'that note'} and hold it steady.`,
+      capture: `The microphone is on. Sing ‘oo’ on ${target !== null ? 'that note' : freeNoteWords()} and hold it steady.`,
     }[phase] || '';
     if (stepWords.textContent !== words) {
       stepWords.textContent = words;
       stepIcon.replaceChildren(...(active ? [icon(phase === 'capture' ? 'mic' : phase === 'tone' ? 'speaker' : 'dots', 16)] : []));
     }
     bar.hidden = phase !== 'capture';
+    // Plain about what is kept (since v3 that includes short recordings) and where.
     const idle = says || (record
-      ? `Your voice is saved as its tone colour, ${record.envelope.length} pairs of numbers, not a recording. Reference tone "My voice" plays it.`
-      : 'About 4 seconds of one steady note. Only a few numbers are kept, never a recording.');
+      ? `Your voice is kept in this browser only: its tone colour and ${kept.length} of ${SLOTS.length} short recordings. Reference tone "My voice" plays it.`
+      : 'Sing one steady ‘oo’ for about 4 seconds, three times: a middle, a lower and a higher note. Up to 3 short recordings (about 1 second each) stay in this browser only; nothing is sent anywhere.');
     if (saysLine.textContent !== idle) saysLine.textContent = idle;
     saysLine.dataset.role = saysRole;
+    for (const b of recs.querySelectorAll('button')) b.disabled = active;
+  }
+
+  // Built again only when the list changes; paint() turns its buttons off while teaching.
+  function paintRecs(list = currentRecordings() || []) {
+    kept = list;
+    recs.hidden = !kept.length;
+    recList.replaceChildren(...kept.map((rec) => {
+      const name = `${SLOT_WORD[slotOf(rec, kept, home)]} note, ${noteName(rec.midi)}`;
+      return h('li', { class: 'ov-rec', 'data-midi': String(rec.midi) },
+        h('span', { class: 'ov-rec-name' }, name[0].toUpperCase() + name.slice(1)),
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', 'aria-label': `Play ${name}`, onclick: () => playTake(rec) }, 'Play'),
+        h('button', { class: 'btn btn-quiet btn-small', type: 'button', 'aria-label': `Replace ${name}`, onclick: () => teach(Math.round(rec.midi)) }, 'Replace'));
+    }));
+    paint();
+  }
+
+  function stopTake() { if (playing) { try { playing.stop(0.05); } catch { /* already over */ } playing = null; } }
+  // Sound only on a press, and one take at a time.
+  function playTake(rec) {
+    if (busy() || dead) return;
+    stopTake();
+    let player = null;
+    try { player = synth(); } catch { return; }
+    if (!player) return;
+    const mine = player.play({ midi: rec.midi, dur: O.toneSec, timbre: { recordings: [rec] }, gain: 0.5 * settings.get('toneVolume'), tag: 'take' });
+    playing = mine;
+    emit('played', { midi: rec.midi });
+    mine.ended.then(() => { if (playing === mine) playing = null; });
+  }
+
+  function eraseTakes() {
+    if (busy()) return;
+    stopTake();
+    emit('erased');
+    eraseRecordings().catch(() => { /* nothing more to do */ }).then(() => { if (!dead) { paintRecs([]); told(); } });
+    paintRecs([]);
   }
 
   function paintBar() {
@@ -350,6 +494,18 @@ export function mountOwnVoice(host, {
     release();
     const result = c.finish();
     if (!result.ok) { emit('refused', { reason: result.reason }); end(result, result.words, 'close'); return; }
+    // The recording is judged on its own (clipped, noisy, short, wobbly): refused, the tone
+    // colour is still kept and the singer is asked for another take.
+    const held = keeper && keeper.best();
+    let take = held ? prepareRecording(held.data, held.rate) : { ok: false, reason: 'short', words: 'That was too short to keep. Hold the note steady for a couple of seconds.' };
+    keeper = null;
+    if (take.ok && offNote(take.rec, target)) take = { ok: false, reason: 'off-note', words: offNote(take.rec, target) };
+    // The words are worked out now from the same rule the store uses, so they do not wait on it.
+    const willKeep = take.ok ? keepRecordings(kept, take.rec) : null;
+    if (take.ok) {
+      addRecording(take.rec).then((list) => { emit('recorded', { midi: take.rec.midi, count: list.length }); if (!dead) paintRecs(list); },
+        () => emit('recorded', { midi: take.rec.midi, count: 0, failed: true }));
+    } else emit('recordrefused', { reason: take.reason });
     const { saved, record: rec } = saveOwnVoice(store, result);
     record = rec;
     unsaved = !saved;
@@ -357,7 +513,9 @@ export function mountOwnVoice(host, {
     settings.set('toneChosen', true);
     settings.set('tone', 'mine');
     emit('saved', { harmonics: result.harmonics });
-    end(result, saved ? 'Saved. The note you copy now plays in your voice.' : 'Got it, for this visit: this browser would not save it.');
+    end(result, !saved ? 'Got it, for this visit: this browser would not save it.'
+      : take.ok ? keptWords(willKeep, take.rec, home)
+        : `Try again: ${take.words[0].toLowerCase()}${take.words.slice(1)}`);
   }
 
   function capture(mine) {
@@ -371,6 +529,10 @@ export function mountOwnVoice(host, {
     const source = mic.ctx.createMediaStreamSource(mic.stream), analyser = mic.ctx.createAnalyser();
     analyser.fftSize = collector.windowSize;
     source.connect(analyser);
+    const long = mic.ctx.createAnalyser();
+    long.fftSize = 32768;
+    source.connect(long);
+    keeper = createHeldKeeper(long, mic.ctx);
     tap = { source, analyser };
     const buffer = new Float32Array(collector.windowSize);
     const fromT = mic.ctx.currentTime + collector.windowSize / mic.sampleRate;
@@ -381,6 +543,7 @@ export function mountOwnVoice(host, {
       if (mic.ctx.currentTime < fromT) return;
       analyser.getFloatTimeDomainData(buffer);
       collector.push(frame, buffer);
+      if (keeper) keeper.push(frame);
       paintBar();
       if (collector.voicedMs() >= O.captureMs) finishCapture();
     });
@@ -392,8 +555,11 @@ export function mountOwnVoice(host, {
     told();
   }
 
-  async function teach() {
+  // teach(midi?): the note to copy is midi (Replace), else the next of middle / low / high.
+  async function teach(midi) {
     if (busy() || dead) return null;
+    stopTake();
+    target = guideNote(kept, home, midi);
     const mine = ++seq;
     phase = 'asking'; says = ''; saysRole = '';
     paint();
@@ -403,7 +569,7 @@ export function mountOwnVoice(host, {
     const stillMine = () => !dead && mine === seq;
     // The home note is a reference tone: the headphones question comes first, as before any
     // other (spec 10.4). With no home note nothing is played and nothing is asked.
-    if (home !== null) {
+    if (target !== null) {
       const phones = await shell.needHeadphones();
       if (!stillMine()) return waiting;
       if (!phones) { end(null, 'Say whether you are wearing headphones, then press Teach again.'); return waiting; }
@@ -411,7 +577,7 @@ export function mountOwnVoice(host, {
     const ok = await micflow.request(micOptions || {});
     if (!stillMine()) return waiting;
     if (!ok) { end(null, 'The microphone is not on yet.'); return waiting; }
-    if (home === null) { capture(mine); return waiting; }
+    if (target === null) { capture(mine); return waiting; }
     let player = null;
     try { player = synth(); } catch { /* no sound here: sing without the note */ }
     if (!player) { capture(mine); return waiting; }
@@ -421,7 +587,7 @@ export function mountOwnVoice(host, {
     told();
     emit('tone');
     const plain = timbreFor(settings.get('tone'), record ? record.envelope : null);
-    tone = player.play({ midi: home, dur: O.toneSec, timbre: plain, gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
+    tone = player.play({ midi: target, dur: O.toneSec, timbre: plain, gain: 0.5 * settings.get('toneVolume'), tag: 'tone' });
     tone.ended.then(() => new Promise((r) => setTimeout(r, O.toneTailMs))).then(() => {
       if (!stillMine() || phase !== 'tone') return;
       tone = null;
@@ -434,7 +600,7 @@ export function mountOwnVoice(host, {
   const onKey = (e) => { if (e.key === 'Escape' && (phase === 'tone' || phase === 'capture')) cancel('Stopped. The microphone is off.'); };
   // A sheet of our own asking (headphones, the microphone's first sheets) is not a reason.
   const onSheet = (e) => { if (e.detail.open && (phase === 'tone' || phase === 'capture')) cancel('Stopped. The microphone is off.'); };
-  const onHidden = (e) => { if (e.type === 'pagehide' || document.hidden) cancel('Stopped. The microphone is off.'); };
+  const onHidden = (e) => { if (e.type === 'pagehide' || document.hidden) { stopTake(); cancel('Stopped. The microphone is off.'); } };
   document.addEventListener('keydown', onKey);
   document.addEventListener('mt:sheet', onSheet);
   document.addEventListener('visibilitychange', onHidden);
@@ -464,13 +630,15 @@ export function mountOwnVoice(host, {
   document.addEventListener('mt:backup', onBackup);
 
   paintChoice();
-  paint();
+  paintRecs(kept);
+  refreshRecordings().then((list) => { if (!dead && !busy()) paintRecs(list || []); }, () => {});
 
   return {
     el, teach, cancel, busy, state,
     record: () => record,
     destroy() {
       if (busy()) cancel();
+      stopTake();
       dead = true;
       seq++;
       offState(); offSettings();

@@ -146,7 +146,7 @@ export function createFigureField(host, { config = CONFIG } = {}) {
       rem: parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
     };
     // Dawn is a paper sky: its marks are darker than the field, Dusk's are lighter.
-    tokens.light = (lightness(tokens.stage) ?? (document.documentElement.dataset.theme === 'dawn' ? 1 : 0)) > 0.5;
+    tokens.light = (lightness(tokens.stage) ?? (document.documentElement.dataset.tone === 'light' ? 1 : 0)) > 0.5;
     tokens.aurora = { good: g('--aurora-in') || tokens.good, close: g('--aurora-close') || tokens.close, off: g('--aurora-off') || tokens.off, core: g('--voice-core'), low: g('--aurora-low'), mid: g('--aurora-mid'), high: g('--aurora-high'), crown: g('--aurora-crown') };
     tokens.auroraPeak = parseFloat(g('--aurora-peak')) || 1;
     skyKey = ''; haloKey = '';

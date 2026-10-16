@@ -4,59 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sing a song · Music trainer</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%275%27 fill=%27%2338bdf8%27/%3E%3Cpath d=%27M9 17V7l7-2v9%27 fill=%27none%27 stroke=%27%2306202c%27 stroke-width=%272%27 stroke-linecap=%27round%27/%3E%3C/svg%3E">
 <script>
-  // Set the theme before the first paint (the same rule and storage key as index.html).
+  // Set the theme first (the same rule and storage key as index.html), so even the one
+  // frame before the redirect is the singer's sky colour, never a white flash.
   (function () {
     var theme = null;
     try { theme = (JSON.parse(localStorage.getItem('music-trainer.settings.v1') || '{}') || {}).theme; } catch (e) { /* use the system setting */ }
     if (theme !== 'dusk' && theme !== 'dawn') theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'dawn' : 'dusk';
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.tone = theme === 'dawn' ? 'light' : 'dark';
   })();
+  // Songs live in the app now (page-layout spec, slice S3): this page only forwards old
+  // links and bookmarks to index.html#/songs, keeping the query (?models=local for test
+  // runs). replace(), so Back does not land here again. It runs before <body> is parsed,
+  // so nothing of a page is painted first.
+  location.replace('index.html' + location.search + '#/songs');
 </script>
-<link rel="stylesheet" href="css/tokens.css">
-<link rel="stylesheet" href="css/app.css">
-<link rel="stylesheet" href="css/singnow.css">
-<link rel="stylesheet" href="css/grades.css">
-<link rel="stylesheet" href="css/backup.css">
+<noscript><meta http-equiv="refresh" content="0; url=index.html#/songs"></noscript>
+<style>/* the two --bg values of css/tokens.css */ html { background: #0b1020; } html[data-tone="light"] { background: #f7f5ef; }</style>
 </head>
-<body class="singnow-page">
-<!-- A standalone first version of song mode (docs/design/specs/2026-10-12-song-mode.md):
-     drop a song, sing along, record a take, hear it back. Everything is drawn by
-     js/app/singnow.js. Loading this page opens no microphone, starts no sound and
-     downloads no model: each of those waits for a press. The one thing sent anywhere is
-     a dropped song's title and artist, to lrclib.net, to find its words; the page says so
-     before the first lookup, and "Look up words automatically" in Settings turns it off. -->
-<a class="skip-link" href="#sing-root">Skip to the screen</a>
-
-<header class="topbar">
-  <a class="brand" href="index.html">
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M8 18V6l8-2v4"/><path d="M8 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
-      <path d="M17.5 11l1.1 2.4 2.6.3-1.9 1.8.5 2.6-2.3-1.3-2.3 1.3.5-2.6-1.9-1.8 2.6-.3z"/>
-    </svg>
-    <span class="brand-name">Music trainer</span>
-  </a>
-  <span class="singnow-place">Sing a song</span>
-  <div class="topbar-right">
-    <button class="chip chip-button" id="mic-chip" type="button" aria-label="Microphone: open its settings"></button>
-    <button class="chip chip-button" id="headphones-chip" type="button" aria-label="Headphones: change your answer"></button>
-    <button class="icon-button" id="settings-button" type="button" aria-label="Settings"><i data-icon="gear" data-size="24"></i></button>
-  </div>
-</header>
-
-<!-- The app shell (js/app/shell.js) draws its routes into #view. This page has one screen
-     of its own, so the shell's view stays empty and hidden; the shell is here for the
-     headphones question, the settings sheet and the microphone chip. -->
-<div id="view" hidden></div>
-
-<main id="sing-root" tabindex="-1"></main>
-
-<noscript><p style="padding:16px">Music trainer needs JavaScript turned on.</p></noscript>
-
-<script type="module">
-  import { bootSingNow } from './js/app/singnow.js';
-  bootSingNow(document.getElementById('sing-root'));
-</script>
+<body>
+<p><a href="index.html#/songs">Songs have moved into the app: open Songs</a></p>
 </body>
 </html>

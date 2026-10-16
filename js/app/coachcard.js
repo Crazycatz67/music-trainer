@@ -349,7 +349,6 @@ export function mountCoach(view, { sessions, id = null, config = CONFIG } = {}) 
   const all = sessions.read().sessions;
   const session = (id && all.find((s) => s.id === id)) || (!id && all[all.length - 1]) || null;
   const head = (...extra) => h('div', { class: 'title-row' },
-    h('a', { class: 'btn btn-quiet', href: '#/today' }, icon('back', 16), 'Today'),
     h('h1', { tabindex: '-1' }, 'Coach notes'), ...extra);
   if (!session) {
     view.append(head(), h('section', { class: 'card' },

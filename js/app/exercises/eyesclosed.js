@@ -277,7 +277,6 @@ export function mountEyesClosed(view, {
   view.classList.add('exercise', 'eyes-closed');
   view.append(
     h('div', { class: 'title-row ex-head' },
-      h('a', { class: 'btn btn-quiet back', href: '#/practice' }, icon('back', 16), ' Back'),
       h('h1', { tabindex: '-1' }, 'Eyes closed'), stepText, tray),
     h('p', { class: 'reason' }, EYES_WORDS.what),
     bannerSlot, viewHost, underLine, h('div', { class: 'ec-slot' }, card, compare), spoken,

@@ -45,10 +45,10 @@
 @media (max-width: 759px) { .rangefinder[data-phase="done"] .hud { display: none; } }
 
 /* ---- setup: four stars on one line, one step's words, the buttons */
-.setup-card { max-width: 960px; border-radius: var(--r-l); padding: var(--s6); }
+.setup-card { max-width: 960px; }
 .setup-card > * + * { margin-top: var(--s4); }
 /* Step 3 is a stage: it gets the whole width (review 4, finding 16). */
-.setup[data-step="range"] .setup-card { max-width: none; padding-top: var(--s5); padding-bottom: var(--s5); }
+.setup[data-step="range"] .setup-card { max-width: none; }
 
 /* The steps are stars joined by a line. To do: an outline star. Now: the star inside an
    accent ring. Done: a filled gold star with a tick, and the line leading on from it turns
@@ -121,7 +121,6 @@
 }
 @media (max-width: 759px) {
   .setup-range .stage { height: clamp(240px, calc(100vh - 590px), 420px); }
-  .setup-card { padding: var(--s4); }
   .setup-dots .path-name { display: none; }
   .setup-dots li[data-state="now"] .path-name { display: inline; }
 }

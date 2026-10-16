@@ -18,7 +18,7 @@
 /* The result of the last hold, under the stage, never over the line it describes. A wide
    area, so it fades both ways (200 ms) and never jumps; hidden, it is out of the reading
    order too. */
-.ln-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s1) var(--s5); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
+.ln-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s1) var(--s5); box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
 .ln-card[data-shown="no"] { opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
 .ln-card[data-tier="best"] { border-color: var(--gold); box-shadow: 0 0 var(--s5) var(--gold-glow); }
 .ln-main { grid-column: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); }

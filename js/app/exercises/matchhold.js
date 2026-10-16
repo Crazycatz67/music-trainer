@@ -282,7 +282,6 @@ export function mountMatchHold(view, {
   view.classList.add('exercise');
   view.append(
     h('div', { class: 'title-row ex-head' },
-      h('a', { class: 'btn btn-quiet back', href: '#/practice' }, icon('back', 16), ' Back'),
       h('h1', { tabindex: '-1' }, 'Match and hold'), stepText, tray),
     h('p', { class: 'reason' }, `Hear a note, then sing it and hold it inside the band for ${holdTotalMs / 1000} seconds.`),
     bannerSlot, viewHost, underLine, cardSlot,

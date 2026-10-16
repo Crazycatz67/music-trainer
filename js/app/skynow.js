@@ -11,9 +11,12 @@
 //   SKY_KEY = 'music-trainer.sky.v1'   the picker's record (spec 4.3): { cityId } | { lat, lon },
 //                                       plus `confirmed`. Read only here; nothing writes it yet.
 //   MILKY_WAY = { ra: 192.86, dec: 27.13 }   the north galactic pole (J2000), the band's pole
-//   toCatalogue(starsJson, figuresJson, { lines = true }?) -> the dome's STAR CATALOGUE (skymap.js):
+//   toCatalogue(starsJson, figuresJson, { lines = true, only = null }?) -> the dome's STAR CATALOGUE (skymap.js):
 //       { stars: [{ ra, dec, mag, colour, name? }], figures: [{ id, name, lines }], milkyWay }
-//       lines: false gives figures: [] (stars and Milky Way only).
+//       lines: false or 'off' gives figures: [] (stars and Milky Way only). lines: 'tonight'
+//       keeps only the figure whose id (IAU code, e.g. 'Lyr') is `only`; none when only is null.
+//   linesMode(v) -> 'all' | 'tonight' | 'off'   the Settings value skyLines, or the old boolean
+//   tonightsCon(ms, place, tz) -> IAU code of tonight's constellation (realsky) | null
 //       Star order and indexes are the file's, so figure lines index `stars` unchanged.
 //       Throws (via realsky.makeSky) on a file of the wrong shape.
 //   placeFor(saved, guess) -> { lat, lon, name|null, guessed, known }
@@ -26,7 +29,10 @@
 //       dome.setSky takes (skymap.skyRotation), so the dome's own maths does the turning.
 //   startSkyNow(sky, { storage?, now?, timeZone?, atHome?, lines = LINES, loadJson?, starsUrl?, figuresUrl? })
 //       -> { loaded: Promise<boolean>, debug() -> { state, mode, tRef, place, stars, figures,
-//            error }, stop() }
+//            lines, tonight, error }, setLines(mode), stop() }
+//       lines: true | false | 'all' | 'tonight' | 'off'. The page's data-sky-lines (shell.js,
+//       Settings > Look) wins when it is set, and its 'mt:skylines' event { mode } changes the
+//       lines live; setLines does the same for a caller. 'tonight' follows the night rollover.
 //       Fetches both files once. Until they land, and for ever if either fails, the dome keeps
 //       the made-up sky: no error is shown, `loaded` resolves false and debug().error says why.
 //       In mode 'now' the sky is turned once a minute while the page is visible and atHome();
@@ -34,19 +40,20 @@
 // The five places, Tonight's moon and the owner's earned shapes are drawn in the viewer's
 // frame (dome az/alt), not on the star sphere, so turning the sky never moves them.
 
-import { makeSky, guessCity, cityById, skyMoment, lst as siderealTime, aheadFor } from './realsky.js';
+import { makeSky, guessCity, cityById, skyMoment, lst as siderealTime, aheadFor, tonightsConstellation } from './realsky.js';
 
 export const SKY_KEY = 'music-trainer.sky.v1';
 export const MILKY_WAY = Object.freeze({ ra: 192.86, dec: 27.13 });
 // Spec section 1: "advanced once a minute while home is showing".
 export const TURN_MS = 60000;
-// The real constellation lines stay OFF until the dome has the spec's clearings (section 2.3
-// rule 2: lines fade out round the five places and the earned shapes). Drawn without them,
+// The real constellation lines are ON now that the dome has the spec's clearings (section 2.3
+// rule 2, dome.js clearings(): lines fade out round the five places, Your Sky and every place
+// label; checked in skynow.check.mjs for London and Sydney). Drawn without them,
 // 660 grey lines run straight through The Ladder and The Lyre and the places stop reading as
 // places. The spec's own fallback for a busy sky is fewer lines (rule 4).
-export const LINES = false;
+export const LINES = true;
 
-export function toCatalogue(starsJson, figuresJson, { lines = true } = {}) {
+export function toCatalogue(starsJson, figuresJson, { lines = true, only = null } = {}) {
   const sky = makeSky(starsJson, figuresJson);
   const stars = sky.stars.map(([ra, dec, mag, colour], i) => {
     const s = { ra, dec, mag, colour: Number.isFinite(colour) ? colour : null };
@@ -54,8 +61,27 @@ export function toCatalogue(starsJson, figuresJson, { lines = true } = {}) {
     if (name) s.name = name;
     return s;
   });
-  const figures = !lines ? [] : sky.figures.map((f) => ({ id: f.id, name: f.name, lines: f.lines }));
+  const mode = linesMode(lines);
+  const keep = mode === 'off' ? [] : mode === 'tonight' ? sky.figures.filter((f) => f.id === only) : sky.figures;
+  const figures = keep.map((f) => ({ id: f.id, name: f.name, lines: f.lines }));
   return { stars, figures, milkyWay: MILKY_WAY };
+}
+
+// The Settings row stores 'all' | 'tonight' | 'off'; older callers pass a boolean. Anything
+// else is 'all', the spec's default (living-sky 2.3 rule 4).
+export function linesMode(v) {
+  if (v === false || v === 'off') return 'off';
+  return v === 'tonight' ? 'tonight' : 'all';
+}
+
+// Tonight's constellation as the figures file names it. realsky's STARTER rows carry the IAU
+// code (`con`), which is the figures file's `id`. Judged at 9 pm local on the evening `ms`
+// belongs to, so it only changes at the night rollover.
+export function tonightsCon(ms, place, tz) {
+  try {
+    const t = tonightsConstellation(ms, { lat: place.lat, lon: place.lon, tz });
+    return t.figure ? t.figure.con : null;
+  } catch { return null; }
 }
 
 const okLat = (v) => Number.isFinite(v) && v >= -90 && v <= 90;
@@ -88,7 +114,31 @@ export function startSkyNow(sky, {
   figuresUrl = new URL('../../vendor/sky-data/figures.json', import.meta.url).href,
 } = {}) {
   let state = 'loading', error = null, stopped = false, timer = null, view = null, counts = { stars: 0, figures: 0 };
-  let place = null;
+  let place = null, data = null, shownKey = null, tonight = null;
+  const pageLines = () => (typeof document !== 'undefined' && document.documentElement && document.documentElement.dataset.skyLines) || null;
+  let mode = linesMode(pageLines() || lines);
+
+  // The lines on the dome for the current mode. Only rebuilds when what is shown would change
+  // (a new mode, or 'tonight' passing the night rollover): setStars rebuilds the whole field.
+  function showLines() {
+    if (stopped || !data) return;
+    if (mode === 'tonight') {
+      const saved = readSaved(storage), guess = guessCity(timeZone);
+      const city = saved && saved.cityId ? cityById(saved.cityId) : null;
+      tonight = tonightsCon(now(), placeFor(saved, guess), (city && city.tz) || guess.tz);
+    }
+    const key = mode === 'tonight' ? `tonight:${tonight}` : mode;
+    if (key === shownKey) return;
+    const cat = toCatalogue(data[0], data[1], { lines: mode, only: tonight });
+    counts = { stars: cat.stars.length, figures: cat.figures.length };
+    sky.setStars(cat);
+    shownKey = key;
+  }
+  function setLines(v) {
+    mode = linesMode(v);
+    if (state === 'real') { showLines(); turn(); }
+  }
+  const onLines = (e) => setLines(e && e.detail ? e.detail.mode : undefined);
 
   // Turn the sky to the moment for this place. Only called once the real stars are on the
   // dome: the made-up sky's anchors are placed for an unturned sphere.
@@ -102,19 +152,26 @@ export function startSkyNow(sky, {
     if (stopped || state !== 'real' || !view || view.mode !== 'now') return;
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     if (!atHome()) return;
+    if (mode === 'tonight') showLines();
     turn();
   }
-  const onVisible = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') turn(); };
+  const onVisible = () => {
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+    if (mode === 'tonight' && state === 'real') showLines();
+    turn();
+  };
 
   const loaded = Promise.all([loadJson(starsUrl), loadJson(figuresUrl)]).then(([s, f]) => {
     if (stopped) return false;
-    const cat = toCatalogue(s, f, { lines });
-    counts = { stars: cat.stars.length, figures: cat.figures.length };
-    sky.setStars(cat);
+    data = [s, f];
+    showLines();
     state = 'real';
     turn();
     timer = setInterval(tick, TURN_MS);
-    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisible);
+      document.addEventListener('mt:skylines', onLines);
+    }
     return true;
   }).catch((e) => {
     // A missing or broken file keeps the made-up sky. Nothing on screen says so: the home
@@ -126,11 +183,15 @@ export function startSkyNow(sky, {
 
   return {
     loaded,
-    debug: () => ({ state, mode: view ? view.mode : null, tRef: view ? view.tRef : null, place, ...counts, error }),
+    debug: () => ({ state, mode: view ? view.mode : null, tRef: view ? view.tRef : null, place, ...counts, lines: mode, tonight, error }),
+    setLines,
     stop() {
       stopped = true;
       if (timer) clearInterval(timer);
-      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisible);
+        document.removeEventListener('mt:skylines', onLines);
+      }
     },
   };
 }

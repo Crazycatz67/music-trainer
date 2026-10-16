@@ -1,5 +1,5 @@
-// singnow.js — "Sing a song", a first working version of song mode on one standalone page
-// (sing.html). It is the screens half over the song core: js/app/analyse/job.js (drop a
+// singnow.js — "Sing a song", song mode's screen, mounted at index.html#/songs (sing.html
+// only redirects there since page-layout S3). It is the screens half over the song core: js/app/analyse/job.js (drop a
 // file -> a kept song), js/app/song/* (store, phrases, words, player, recorder, align, mix,
 // takes) and js/app/transport.js. The design it leans on is
 // docs/design/specs/2026-10-12-song-mode.md sections 4, 5, 6, 8 and 9; where the two
@@ -42,11 +42,10 @@
 //   while recording). Nothing turns the microphone back on by itself.
 //
 // CONTRACT
-//   bootSingNow(root, hooks?) -> app
-//     root   the element the screen is drawn into. The page must also hold the shell's
-//            pieces (#view, #mic-chip, #headphones-chip, #settings-button), as sing.html does.
-//     hooks  for the lab only (labs/singnow-lab.js); also read from window.__singnowHooks.
-//            Nothing in sing.html sets any of them.
+//   mountSongs(view, opts) -> app        (opts below; index.html #/songs is the only caller)
+//     hooks  for the lab only (labs/singnow-lab.js frames index.html#/songs); also read from
+//            window.__singnowHooks, which index.html hands to createSongService too.
+//            Nothing in the app sets any of them.
 //       loadTools  async ({ onProgress }) -> tools     a stand-in for the listening model
 //       cached     boolean: say whether "the model is already here" (with loadTools)
 //       songDb, takeDb   IndexedDB names, so a lab never touches the owner's songs
@@ -68,6 +67,8 @@
 //       stageMs, auroraMs (the last frame's cost and the curtain's share), auroraCols,
 //       auroraTier (the guard: 0 full, 1 wide columns, 2 off), lineDrawn, headDrawn, voiceKind,
 //       ways: { noLine?, noGuide? } (the ways to sing on for the open song, grades spec 10),
+//       level: { id, offered, locked, faint: { k (0..1 level cross-fade, 1 settled), drawn
+//                (target points drawn faint in the last frame) } } (difficulty spec 3.4, 4),
 //       stars: [{ i, level: 'with' | 'close' }] (the row as drawn),
 //       end: null | { open, waiting (the shooting star is on its way), practice, best,
 //                     with, close, sung, total, bestLine, practise } (the end panel),
@@ -80,12 +81,11 @@
 //   app.jobs       the live objects (player, recorder and transport are null until a song opens)
 //   app.openSong(id), app.closeSong(), app.addFiles(files)   what the buttons call
 //   Also on window.__singnow, for the lab and for looking at a problem in the console.
-//   bootSingNow is now a thin wrapper (page-layout spec 3.4): its own shell + micflow +
-//   createSongService (singnow-service.js) + mountSongs.
+//   sing.html is a redirect stub to index.html#/songs (page-layout S3): no wrapper any more.
 //   mountSongs(view, { shell, micflow, settings, storage, service, songId?, go?, hooks? }) -> app
 //     go(hash)  inside the app (index.html #/songs): Sing in the library and "My songs" in a
 //               song change the address instead, and the shell remounts (spec 3.1). Without
-//               it (sing.html) both stay inside the screen, as before.
+//               it both stay inside the screen.
 //     songId    open this song ready and silent; one not saved here leaves the library up
 //               with a quiet line
 //     one visit to the screen; app.destroy() leaves in the spec's 6-step order (take ended
@@ -101,8 +101,7 @@
 // of the Octave control (display and judging only: the sound is never changed).
 
 import { CONFIG } from './config.js';
-import { confirmSheet, createSettings, h, icon, initShell, openSheet, segmented, sheetOpen, switchRow, toast } from './shell.js';
-import { createMicFlow } from './micflow.js';
+import { confirmSheet, h, icon, openSheet, segmented, sheetOpen, switchRow, toast } from './shell.js';
 import { displayNote, numberText, verdict } from './stage.js';
 import { SONG } from './song/config.js';
 import { createSongStore, idbSongBackend, titleFromFile, titleFromTags } from './song/songstore.js';
@@ -128,7 +127,13 @@ import { letterWords, takeResults, takeWords } from './song/resultsmodel.js';
 import { medallionModel, mountMedallion, wholePercent } from './song/medallion.js';
 import { resultsView } from './song/resultsview.js';
 import { createSynth } from '../synth.js';
-import { createSongService, songsSettings } from './singnow-service.js';
+import { songsSettings } from './singnow-service.js';
+import { LEVELS, difficultyOf, inSpans, judgedSpans, lagScale, levelsOffered, rangeFit, recommendNext } from './song/difficulty.js';
+import { DIFFICULTY } from './song/difficulty.config.js';
+import { GRADES } from './song/grades.config.js';
+import { badgeLevel, bestsId, entryFit, fadeK, fitEl, noteLook, fitView, levelCard, levelLine, nextStep, pickLevel as pickLevelFor, ratingEl, ratingView } from './song/difficulty-view.js';
+import { readRange } from './range.js';
+import { keepGlow } from './takeglow.js';
 
 // ---------------------------------------------------------------- numbers and words
 // Moved to singnow-words.js (pure, Node-safe); every name this file exported is re-exported.
@@ -136,22 +141,18 @@ import { LOOKUP_NOTICE, kindOf, clock, lengthWords, aboutLeft, rangeWords, nudge
   VIEW, OLD_GUIDE_GAINS, KEPT_BALANCES, BEAD_CFG, PREFS_KEY, MODEL_CACHE, OCTAVE_WORDS, AUTHORS_WORDS, KEPT_HERE, NO_WORDS_YET, TAKE_END_WORDS, START_WORDS, clamp, dateWords, firstAtOrAfter } from './singnow-words.js';
 export { LOOKUP_NOTICE, kindOf, clock, lengthWords, aboutLeft, rangeWords, nudgeWords, percent, guideWords, musicWords, MIX_ORDER, silentWords, gainsWords, keptGuide, bandMove, markerEnvelope, autoLine, balanceWords, starLabel, firstWords, CELEBRATE_ENDS };
 
-// ---------------------------------------------------------------- the page
-
-export function bootSingNow(root, given = {}) {
-  const hooks = { ...(window.__singnowHooks || {}), ...given };
-  let storage = null;
-  if ('storage' in hooks) storage = hooks.storage;
-  else { try { storage = window.localStorage; } catch { /* private mode: this visit only */ } }
-
-  // ---- the shell's pieces: settings sheet, headphones question, microphone flow.
-  // sing.html owns them; inside the app (#/songs) the app does, and mounts the screen alone.
-  const settings = createSettings({ storage });
-  const shell = initShell({ settings, routes: {} });
-  const micflow = createMicFlow({ shell, settings, chipEl: document.getElementById('mic-chip') });
-  const service = createSongService({ storage, hooks });
-  return mountSongs(root, { shell, micflow, settings, storage, service, hooks });
+// My songs star row (page-layout 3.2, world.css section 6): the row's star follows the song's
+// best line stars. songStar(entry, now = new Date()) -> { state: 'none' | 'done' | 'today', words }.
+// "today" is the LOCAL calendar day of bestLines.at, so a best sung at 23:50 stops being gold at
+// midnight. Any sign of a sing (a best, a kept take, lastSungAt) counts as Sung.
+export function songStar(e, now = new Date()) {
+  const at = e && e.bestLines && e.bestLines.at ? new Date(e.bestLines.at) : null;
+  if (at && !Number.isNaN(at.getTime()) && at.toDateString() === now.toDateString()) return { state: 'today', words: 'New best today' };
+  if (e && (e.bestLines || e.takes > 0 || e.lastSungAt)) return { state: 'done', words: 'Sung' };
+  return { state: 'none', words: 'Not sung yet' };
 }
+
+// ---------------------------------------------------------------- the page
 
 // One visit to the Songs screen (spec 3.4). Everything made here is undone by destroy():
 // the app's micflow and service outlive the screen, so a listener or frame hook left
@@ -242,13 +243,39 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   const $need = h('div', { class: 'sn-need card', hidden: true });
   const $queue = h('ul', { class: 'sn-queue', 'aria-live': 'polite' });
   const $notice = h('p', { class: 'reason sn-notice', hidden: true });
-  const $songs = h('ul', { class: 'sn-songs' });
+  const $songs = h('ul', { class: 'sn-songs star-rows card', hidden: true });
   const $empty = h('p', { class: 'reason' }, 'No songs yet. Drop one above: your own file, any length up to 12 minutes.');
-  $lib.append(h('h1', { id: 'sn-lib-title', tabindex: '-1' }, 'Sing a song'), $drop, $file, $wordsNote, $need, $notice, $queue, h('h2', null, 'My songs'), $empty, $songs);
+  $lib.append(h('h1', { id: 'sn-lib-title', tabindex: '-1' }, 'Your songs'), $drop, $file, $wordsNote, $need, $notice, $queue, h('h2', null, 'My songs'), $empty, $songs);
 
   // ---- sing screen
   const $title = h('h1', { id: 'sn-song-title', tabindex: '-1' }, '');
   const $artist = h('span', { class: 'reason sn-artist' }, '');
+  // The song plate (difficulty spec 3.2): line A artist · rating, line B fit · hardest line ·
+  // Practise it. Filled by paintPlate() when a song opens; the level switch is a later slice.
+  const $plateRating = h('span', { class: 'sn-plate-rating' });
+  const $plateFit = h('span', { class: 'sn-plate-fit' });
+  const $hardest = h('span', { class: 'reason sn-hardest' }, '');
+  const $practiseHard = h('button', { class: 'btn btn-quiet btn-small sn-practise-hard', type: 'button', dataset: { act: 'practise-hardest' }, hidden: true, onclick: () => practiseHardest() },
+    'Practise it ', h('kbd', { class: 'keycap' }, 'H'));
+  const $plateA = h('p', { class: 'sn-plate-a' }, $artist, $plateRating);
+  // The level switch (difficulty spec 4): one tab stop, roving tabindex, after "Practise it".
+  // Only the offered levels are shown; the thumb slides under the chosen one.
+  const $levelOpts = LEVELS.map((id) => h('button', { class: 'segment sn-level-opt', type: 'button', role: 'radio', tabindex: '-1', 'aria-checked': 'false', title: DIFFICULTY.levels[id].description, dataset: { level: id }, onclick: () => pickLevel(id) }, DIFFICULTY.levels[id].label));
+  // It wears the shell's segmented look (app.css .segmented / .segment: the sliding thumb is
+  // its ::before) but not segmented(): that counts every option and has no stopped-only lock.
+  const $level = h('span', { class: 'segmented sn-level', role: 'radiogroup', 'aria-label': 'Level', hidden: true, onkeydown: (e) => levelKey(e) }, ...$levelOpts);
+  const $levelKey = h('kbd', { class: 'keycap sn-level-key', hidden: true }, 'D');
+  const $plateB = h('p', { class: 'reason sn-plate-b' }, $plateFit, $hardest, $practiseHard, $level, $levelKey);
+  const $levelWords = h('p', { class: 'reason sn-level-words', hidden: true }, '');
+  let plate = { hardest: -1 };
+  // My songs as the library last listed them: the results panel's Next up reads it (spec 3.5).
+  let libEntries = [];
+  // The open song's level: `offered` from levelsOffered (easiest first; [] without a chart),
+  // `judged` the spans the judge counts (null = every note, Hard's and a recording's way).
+  let level = 'hard', offered = [], judged = null;
+  // The stage's faint notes (spec 3.4): the spans judged before the last level change and when
+  // it happened, so the picture cross-fades; -Infinity = no fade (a song just opened).
+  let judgedWas = null, faintSince = -Infinity, faintK = 1, faintDrawn = 0;
   const $banners = h('div', { class: 'sn-banners' });
   const $lampIcon = h('span', { class: 'sn-lamp-icon', 'aria-hidden': 'true' });
   const $lampText = h('span', { class: 'sn-lamp-text' }, '');
@@ -378,8 +405,10 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     btn('btn-secondary btn-small', 'sn-tap-back', 'Back one line', () => tapBack(), '← Back one line'),
     btn('btn-secondary btn-small', 'sn-tap-done', 'Finish and keep what is timed', () => finishTap(), 'Done'));
 
+  // Back hops to #/songs from a song's own address; a take opened from the library is shown at
+  // #/songs already (the same address would not hop), so there it closes in place.
   $sing.append(
-    h('div', { class: 'title-row' }, btn('btn-quiet', 'sn-back', 'Back to My songs', () => (goTo ? goTo('#/songs') : closeSong()), icon('back', 16), ' My songs'), $title, $artist),
+    h('div', { class: 'title-row' }, btn('btn-quiet', 'sn-back', 'Back to My songs', () => (goTo && !/^#\/?songs\/?$/.test(location.hash) ? goTo('#/songs') : closeSong()), icon('back', 16), ' My songs'), h('div', { class: 'sn-plate' }, $title, $plateA, $plateB, $levelWords)),
     $banners, $lamp, $live, $stage, $band, $hold,
     h('div', { class: 'sn-scrub-row' }, $tNow, $scrub, $tEnd), $loop, $rest,
     $transport, $primaryWhy, $tapRow, $sound, $review);
@@ -483,20 +512,34 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   async function paintLibrary() {
     const got = await store.list({ sort: 'date' });
     const mine = got.groups.mine;
+    libEntries = mine;
     const bests = readBests(storage);
+    const voice = readRange(storage);
+    // Next up (difficulty spec 3.1): one signpost in the whole list, the song recommendNext
+    // picks among the rated ones (a recording with no chart has no rating yet, spec 5).
+    const fits = new Map(mine.map((e) => [e.id, entryFit(e, voice)]));
+    const next = recommendNext(mine.filter((e) => Number.isFinite(e.rating)).map((e) => {
+      const top = bestAny(bests, e.id), f = fits.get(e.id);
+      return { id: e.id, title: e.title, rating: e.rating, best: (top && top.result && top.result.letter) || null, personal: f ? f.personal : undefined };
+    }));
     const rows = [];
     for (const e of mine) {
       const kept = e.takes ? await store.takesOf(e.id) : [];
       const top = bestAny(bests, e.id);
-      rows.push(h('li', { class: 'sn-song card', dataset: { song: e.id } },
-        h('div', { class: 'sn-song-main' },
+      const star = songStar(e);
+      // A star row inside the one My songs panel (the list is the .card, not each song).
+      rows.push(h('li', { class: 'sn-song star-row', dataset: { song: e.id, state: star.state } },
+        h('span', { class: 'star-mark', 'aria-hidden': 'true' }),
+        h('div', { class: 'sn-song-main star-row-main' },
           h('strong', { class: 'sn-song-title' }, e.title), e.artist && h('span', { class: 'sn-song-artist' }, e.artist),
-          h('span', { class: 'reason' }, [lengthWords(e.duration), rangeWords(e.range), e.hasWords ? 'has words' : null, e.hasBacking ? null : 'its sound is missing: drop the file again'].filter(Boolean).join(' · ')),
-          songBadge(bests, e.id)),
+          factsLine(e, fits.get(e.id)),
+          songBadge(bests, e)),
+        h('span', { class: 'star-row-word', dataset: { star: star.state } }, star.words),
         h('div', { class: 'action-row' },
           h('button', { class: 'btn btn-primary', type: 'button', dataset: { act: 'sing' }, disabled: !e.hasBacking, onclick: () => (goTo ? goTo(`#/songs/${encodeURIComponent(e.id)}`) : openSong(e.id)) }, 'Sing'),
           h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'rename' }, onclick: () => renameSong(e) }, 'Rename'),
-          h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'remove' }, onclick: () => removeSong(e) }, 'Remove')),
+          h('button', { class: 'btn btn-quiet', type: 'button', dataset: { act: 'remove' }, onclick: () => removeSong(e) }, 'Remove'),
+          next && next.id === e.id ? h('span', { class: 'sn-chip dv-next', dataset: { chip: 'next' } }, 'Next up', icon('chevron', 16)) : null),
         kept.length ? h('ul', { class: 'sn-takes', 'aria-label': `Takes of ${e.title}` }, kept.map((t) => h('li', { class: 'sn-take', dataset: { take: t.id } },
           h('span', null, [`Take · ${dateWords(t.createdAt)} · ${lengthWords(t.seconds)}${t.finished === false ? ' · cut short' : ''}`, ...takeRowWords(t)].join(' · ')),
           top && top.result.takeId === t.id ? h('span', { class: 'sn-chip', dataset: { tone: top.result.silver ? 'silver' : 'gold', chip: 'best' } }, 'Best') : null,
@@ -504,30 +547,49 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
           h('button', { class: 'btn btn-quiet btn-small', type: 'button', dataset: { act: 'delete-take' }, onclick: () => deleteTake(t) }, 'Delete')))) : null));
     }
     $songs.replaceChildren(...rows);
+    $songs.hidden = mine.length === 0; // an empty panel would be a blank box under "My songs"
     $empty.hidden = mine.length > 0;
     $empty.textContent = got.unavailable ? 'This browser’s storage cannot be opened (a private window?), so songs cannot be kept here.' : 'No songs yet. Drop one above: your own file, any length up to 12 minutes.';
     $drop.classList.toggle('is-small', mine.length > 0);
   }
 
+  // The row's facts (difficulty spec 3.1): length · range · rating · fit, one " · " between
+  // each, the rating and fit as their own marks so the glyph and icon stay beside their words.
+  function factsLine(e, fit) {
+    const parts = [lengthWords(e.duration), rangeWords(e.range), ratingEl(h, ratingView(e.rating)), fitEl(h, fitView(fit)),
+      e.hasWords ? 'has words' : null, e.hasBacking ? null : 'its sound is missing: drop the file again'].filter(Boolean);
+    return h('span', { class: 'reason sn-facts' }, ...parts.flatMap((p, i) => (i ? [' · ', p] : [p])));
+  }
+
   // My songs (grades spec 6.3): the song's best as a small medallion and its words; nothing
   // at all before the first letter (no empty ring). A second way's best on a quiet line.
   const MOD_WORDS = Object.freeze({ plain: 'With the pitch line', noLine: 'By ear', noGuide: 'No guide voice' });
-  function songBadge(bests, songId) {
-    const top = bestAny(bests, songId);
+  // Difficulty spec 3.1: the badge is the highest level cleared, "on Normal" under the words.
+  // A row has no chart to ask which levels it offers, so the level word shows once any best
+  // was kept off Hard (bests before levels are all Hard's: bestsId keeps their bare id).
+  function songBadge(bests, e) {
+    const songId = e.id;
+    const tops = Object.fromEntries(LEVELS.map((l) => { const t = bestAny(bests, bestsId(songId, l)); return [l, t ? t.result : null]; }));
+    const pick = badgeLevel(tops, LEVELS);
+    const top = pick ? bestAny(bests, bestsId(songId, pick.level)) : null;
+    const many = LEVELS.some((l) => l !== 'hard' && tops[l]);
+    const on = pick && many ? `on ${DIFFICULTY.levels[pick.level].label}` : '';
     if (!top || !top.result || !Number.isFinite(top.result.accuracy) || (!top.result.letter && top.result.state !== 'finding')) return null;
     const r = top.result, byEar = !!(r.mods && r.mods.noLine), said = letterWords(r);
     const badge = h('div', { class: 'sn-song-best', dataset: { state: r.state || 'graded' } });
     const words = r.letter ? `Best${byEar ? ' by ear' : ''}: ${said}` : said;
     // One label for the whole badge (review J8); the small medallion inside is not read again.
     badge.setAttribute('role', 'group');
-    badge.setAttribute('aria-label', r.letter ? `Best for this song: ${r.letter}, ${wholePercent(r.accuracy)} percent${byEar ? ', by ear' : ''}.` : 'Best for this song: finding it.');
+    badge.setAttribute('aria-label', r.letter ? `Best for this song: ${r.letter}, ${wholePercent(r.accuracy)} percent${byEar ? ', by ear' : ''}${on ? `, ${on}` : ''}.` : `Best for this song: finding it${on ? `, ${on}` : ''}.`);
     mountMedallion(badge, medallionModel(r), { size: 40, calm: true });
     const mg = badge.querySelector('.mg');
     if (mg) { mg.removeAttribute('role'); mg.removeAttribute('aria-label'); mg.setAttribute('aria-hidden', 'true'); }
-    badge.append(h('span', { class: r.letter ? 'sn-song-best-words' : 'sn-song-best-words reason' }, words));
-    const others = Object.entries((bests && bests.songs && bests.songs[songId]) || {}).filter(([k, v]) => k !== top.key && v && v.letter);
+    badge.append(h('span', { class: r.letter ? 'sn-song-best-words' : 'sn-song-best-words reason' }, words), on ? h('span', { class: 'reason sn-song-best-level' }, on) : null);
+    const others = Object.entries((bests && bests.songs && bests.songs[bestsId(songId, pick.level)]) || {}).filter(([k, v]) => k !== top.key && v && v.letter)
+      .map(([k, v]) => [k.split('+').map((m) => MOD_WORDS[m] || m).join(', '), v])
+      .concat(pick.others.map((o) => [DIFFICULTY.levels[o.level].label, o.result]));
     if (others.length) {
-      const say = others.slice(0, 2).map(([k, v]) => `${k.split('+').map((m) => MOD_WORDS[m] || m).join(', ')}: ${letterWords(v)}`);
+      const say = others.slice(0, 2).map(([k, v]) => `${k}: ${letterWords(v)}`);
       badge.append(h('span', { class: 'reason sn-song-best-more' }, say.join(' · ') + (others.length > 2 ? ` and ${others.length - 2} more` : '')));
     }
     return badge;
@@ -666,8 +728,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   }
 
   // "Look up words automatically" is the Settings sheet's "Songs" part (spec 3.4), the
-  // shell's own section: the app registers it at start, this keeps sing.html's sheet the same
-  // (same id: registering again replaces it). The switch reaches an open screen through the
+  // shell's own section: the app registers it at start; each visit registers it again
+  // (same id: it replaces the old one) so the switch talks to this visit's screen. The switch reaches an open screen through the
   // service, so the notice and the words line follow it at once.
   if (shell && typeof shell.registerSettingsSection === 'function') shell.registerSettingsSection('songs', 'Songs', songsSettings({ storage, service }));
   const offPrefs = service.onPrefs(() => { paintNotice(); autoShown = ''; if (mode !== 'library') paint(); });
@@ -742,7 +804,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
   }
 
-  async function openSong(id, { takeId = null } = {}) {
+  async function openSong(id, { takeId = null, level: asked = null } = {}) {
     if (opening) return false;
     opening = true;
     try {
@@ -766,6 +828,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       recorder.onTake((take) => { onTake(take); });
       transport = createTransport({ player, recorder, lines: phrases, phrases });
       refreshLines();
+      openLevel(id, asked);
       everPlayed = false; trail = []; lastRead = null; review = null; tap = null;
       counting = new Map(); stars = new Map(); run = null; loopNow = null; closeEnd({ focus: false }); end = null;
       lamp = { state: '', text: '', at: 0 };
@@ -775,6 +838,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       const $toast = document.getElementById('toast');
       if ($toast) $toast.classList.remove('is-shown');
       buildScrub();
+      paintPlate();
       paint();
       $title.focus({ preventScroll: true });
       wordsOnOpen(entry);
@@ -787,6 +851,145 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       toast(err && err.name === 'DecodeError' ? err.message : 'This song could not be opened. Drop its file again.');
       return false;
     } finally { opening = false; }
+  }
+
+  // Rows show the song's own (Hard) rating; the plate shows the selected level's. A recording with no chart: artist only, the fit from its
+  // traced range, no hardest line (spec 5).
+  function paintPlate() {
+    const voice = readRange(storage);
+    const chart = !!(song && song.timeline && Array.isArray(song.timeline.notes) && song.timeline.notes.length);
+    let d = null;
+    try { d = chart ? difficultyOf(song, { level, range: voice || null }) : null; } catch { d = null; }
+    const fit = d ? (d.fit || rangeFit(song, null)) : entryFit(song, voice, { link: true });
+    $plateRating.replaceChildren(...(d ? [' · ', ratingEl(h, ratingView(d.rating))] : []));
+    $plateFit.replaceChildren(...[fitEl(h, fitView(fit))].filter(Boolean));
+    const hl = d && levelsOffered(song).length ? d.hardestLine : null;
+    plate = { hardest: hl ? lineIndexAt(phrases, hl.t + 1e-3) : -1 };
+    if (hl) {
+      const text = String(hl.text || '').trim(), cut = text.length > 24 ? `${text.slice(0, 24).trimEnd()}…` : text;
+      $hardest.textContent = `${fit ? ' · ' : ''}Hardest line: ${cut ? `“${cut}” ` : `line ${hl.index + 1}, `}${hl.partWord}`;
+      $hardest.title = text;
+    } else { $hardest.textContent = ''; $hardest.removeAttribute('title'); }
+  }
+  function practiseHardest() {
+    if (plate.hardest < 0 || levelLocked()) return;
+    practiseLine(plate.hardest);
+  }
+
+  // ---- the level switch (difficulty spec 4). A level filters WHICH notes are judged: one
+  // wrapper feeds both the line stars and the letter, or they would disagree. Easy alone also
+  // widens the timing lag (spec 4.5); the cent windows are never touched.
+  const judgeAt = (t) => (judged && !inSpans(judged, t) ? null : targetAt(t));
+  const lagNow = () => LS.lagSec * lagScale(level);
+  const gradesNow = () => (lagScale(level) === 1 ? GRADES : { ...GRADES, judge: { ...GRADES.judge, lagSec: lagNow() } });
+  // Changing level mid-run would judge half a take by one rule and half by another.
+  const levelLocked = () => mode !== 'sing' || recActive() || !!count || playing();
+  // prefs.levels is { songId: level }, kept like the mix (spec 4.2).
+  const keptLevels = () => {
+    if (!prefs.levels || typeof prefs.levels !== 'object' || Array.isArray(prefs.levels)) prefs.levels = {};
+    return prefs.levels;
+  };
+  function openLevel(id, asked) {
+    const chart = !!(song && song.timeline && Array.isArray(song.timeline.notes) && song.timeline.notes.length);
+    try { offered = chart ? levelsOffered(song) : []; } catch { offered = []; }
+    const pick = pickLevelFor({ offered, kept: keptLevels()[id], asked });
+    faintSince = -Infinity;
+    // Next up and "Try it on ..." open the song on their level and keep it as the song's.
+    applyLevel(pick, { save: offered.includes(asked) });
+  }
+  function applyLevel(next, { save = true } = {}) {
+    level = offered.includes(next) ? next : 'hard';
+    try { judged = level === 'hard' ? null : judgedSpans(song, level); } catch { judged = null; level = 'hard'; }
+    if (save && song) { keptLevels()[song.id] = level; savePrefs(); }
+  }
+  function setLevel(next, { say = false, focus = false } = {}) {
+    if (!offered.includes(next) || levelLocked()) return false;
+    if (next !== level) {
+      judgedWas = judged;
+      applyLevel(next);
+      faintSince = performance.now();
+      paintPlate();
+      // Rating, band word and description cross-fade (200 ms, CSS); restart the animation.
+      const $p = $plateA.parentElement;
+      if ($p) { $p.classList.remove('is-level-fade'); void $p.offsetWidth; $p.classList.add('is-level-fade'); }
+    }
+    paintLevel();
+    if (focus) { const $o = $levelOpts[LEVELS.indexOf(level)]; if ($o) $o.focus(); }
+    if (say) $live.textContent = levelLine(level);
+    return true;
+  }
+  function pickLevel(id) { setLevel(id, { focus: true }); }
+  function levelKey(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const i = offered.indexOf(level), n = offered.length;
+    const to = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: n - 1 }[e.key];
+    if (to === undefined) return;
+    // The song's own arrows (skip 5 s) and Home (restart) stand aside on the switch.
+    e.preventDefault();
+    e.stopPropagation();
+    setLevel(offered[Math.max(0, Math.min(n - 1, to))], { focus: true });
+  }
+  function paintLevel() {
+    const show = mode !== 'library' && offered.length > 1;
+    $level.hidden = !show;
+    $levelWords.hidden = !show;
+    if (!show) { $levelKey.hidden = true; return; }
+    const locked = levelLocked(), L = DIFFICULTY.levels[level];
+    const reason = 'You can change the level when the song is stopped.';
+    $level.style.setProperty('--n', String(offered.length));
+    $level.style.setProperty('--i', String(Math.max(0, offered.indexOf(level))));
+    $level.classList.toggle('is-locked', locked);
+    $level.title = locked ? reason : '';
+    LEVELS.forEach((id, k) => {
+      const $o = $levelOpts[k], on = id === level;
+      $o.hidden = !offered.includes(id);
+      $o.setAttribute('aria-checked', String(on));
+      $o.tabIndex = on ? 0 : -1;
+      $o.setAttribute('aria-disabled', String(locked));
+      $o.title = locked ? reason : DIFFICULTY.levels[id].description;
+    });
+    $levelKey.hidden = locked;
+    if ($levelWords.textContent !== L.description) $levelWords.textContent = L.description;
+  }
+
+  // ---- the results panel's level parts (difficulty spec 3.5)
+  const manyLevels = () => offered.length > 1;
+  const levelTops = () => { const b = readBests(storage); return Object.fromEntries(offered.map((l) => { const t = bestAny(b, bestsId(song.id, l)); return [l, t ? t.result : null]; })); };
+  // The level word joins the medallion's chip line ("By ear · Easy"), whose box is reserved
+  // from frame 0, so nothing jumps.
+  function levelChip($grade) {
+    const $line = manyLevels() && $grade.querySelector('.mg-chip-line');
+    if (!$line) return;
+    const word = DIFFICULTY.levels[level].label, $chip = $line.querySelector('.mg-chip');
+    if ($chip) $chip.append(` · ${word}`);
+    else $line.append(h('span', { class: 'mg-chip mg-level', dataset: { level } }, word));
+  }
+  // The comparison line names the level: "Your best on Easy was B · 64 %." Bests are kept per
+  // level (bestsId), so the words already compare within it.
+  function levelSays(words) {
+    if (!words || !manyLevels()) return words;
+    const on = ` on ${DIFFICULTY.levels[level].label}`;
+    return words.replace('Your first letter for this song.', `Your first letter${on}.`).replace(/^Your best( by ear)?/, (m) => m + on).replace(/ Your best( by ear)?/, (m) => m + on);
+  }
+  function endStep(sc) {
+    if (!sc || !song) return null;
+    const tops = levelTops();
+    // Every other rated song at its row (Hard) rating, and this song's own levels; this song
+    // is left out of "Next up" (the Try-it rows cover it).
+    const pairs = libEntries.filter((e) => e.id !== song.id && Number.isFinite(e.rating)).map((e) => {
+      const t = bestAny(readBests(storage), e.id);
+      return { id: e.id, title: e.title, level: 'hard', rating: e.rating, best: t && t.result ? t.result.letter : null };
+    });
+    const step = nextStep({ result: { ...sc.result, state: sc.grade.state }, level, offered, tops, next: recommendNext(pairs), practice: !!end.practice });
+    if (!step) return null;
+    return h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-next', title: step.kind === 'song' ? step.title : '', dataset: { step: step.kind }, onclick: () => takeStep(step) }, step.label, ' ', kbd('N'));
+  }
+  function takeStep(step) {
+    if (step.kind === 'level') { closeEnd(); setLevel(step.level, { say: true }); return; }
+    // The song opens on its level, ready and silent: kept as that song's level, then routed.
+    if (step.level) { keptLevels()[step.id] = step.level; savePrefs(); }
+    stopAll('left');
+    if (goTo) goTo(`#/songs/${encodeURIComponent(step.id)}`); else openSong(step.id, { level: step.level });
   }
 
   function closeSong() {
@@ -878,7 +1081,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (!player || !playing() || !(singing || recActive())) return;
     const t = player.heardTime() - VIEW.voiceLagSec;
     const midi = frame.voiced && Number.isFinite(frame.midi) ? frame.midi : null;
-    const target = midi === null ? null : targetAt(t);
+    // The chosen level's judged notes only (spec 3.4): an unjudged note is not read for pitch.
+    const target = midi === null ? null : judgeAt(t);
     const cents = target === null ? null : 100 * (midi - target);
     // How loud the voice is, smoothed: the height of its light (a point without it is drawn
     // as an even band).
@@ -905,7 +1109,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (i < 0) return;
     let c = counting.get(i);
     if (!c) counting.set(i, c = newCounts());
-    addReading(c, { t, midi, targets: [targetAt(t), targetAt(t - LS.lagSec), targetAt(t + LS.lagSec)] });
+    const lag = lagNow();
+    addReading(c, { t, midi, targets: [judgeAt(t), judgeAt(t - lag), judgeAt(t + lag)] });
   }
   function settleLine(k) {
     const c = counting.get(k);
@@ -1046,11 +1251,11 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       rest = retryNudge(runs);
     }
     const scored = takeResults({
-      frames, targetAt, lines, saved: sum, mods: mods || (fresh ? waysOn() : {}), at: Date.now(), takeId: take ? take.id : null,
-      practice, rest, ways: WAYS_BUILT, bests, songId: song.id,
-    });
+      frames, targetAt: judgeAt, lines, saved: sum, mods: mods || (fresh ? waysOn() : {}), at: Date.now(), takeId: take ? take.id : null,
+      practice, rest, ways: WAYS_BUILT, bests, songId: bestsId(song.id, level),
+    }, gradesNow());
     // Bests are kept per song and way of singing; never for practice or an older take.
-    if (fresh && !practice) { const up = updateBests(bests, song.id, scored.result); if (up.isBest) saveBests(storage, up.bests); }
+    if (fresh && !practice) { const up = updateBests(bests, bestsId(song.id, level), scored.result); if (up.isBest) saveBests(storage, up.bests); }
     return scored;
   }
   // An older take opened from My songs: scored the same way, and the result saved with it
@@ -1089,14 +1294,14 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     const chip = sc && sc.best.chip ? sc.best.chip : end.best ? { id: 'new', text: 'New best for this song', tone: 'gold' } : null;
     const next = sc && sc.best.next && sc.best.next.panel ? sc.best.next.text : '';
     const $grade = sc ? h('div', { class: 'sn-grade' }) : null;
-    if ($grade) mountMedallion($grade, sc.medallion, { size: narrow() ? 72 : 96, reveal: running, calm: shell.calm() });
+    if ($grade) { mountMedallion($grade, sc.medallion, { size: narrow() ? 72 : 96, reveal: running, calm: shell.calm() }); levelChip($grade); }
     end.medalPx = narrow() ? 72 : 96;
     $end.replaceChildren(...[
       $advice, $grade,
       h('div', { class: 'sn-end-main' }, $head,
         // The chip's and the best line's boxes are there from the first frame (no jump).
         h('p', { class: 'sn-end-chip-line' }, chip ? h('span', { class: chip.id === 'new' ? 'sn-end-best' : 'sn-chip', dataset: { tone: chip.tone || 'plain', chip: chip.id } }, chip.id === 'new' ? starSvg('held', 14) : null, chip.id === 'new' ? ` ${chip.text}` : chip.text) : null),
-        sc ? h('p', { class: 'sn-best-line' }, sc.best.words, next ? h('span', { class: 'sn-best-next' }, `${sc.best.words ? ' ' : ''}${next}`) : null) : null),
+        sc ? h('p', { class: 'sn-best-line' }, levelSays(sc.best.words), next ? h('span', { class: 'sn-best-next' }, `${sc.best.words ? ' ' : ''}${next}`) : null) : null),
       ...cards,
       h('div', { class: 'sn-end-actions action-row' },
         rest ? h('button', { class: 'btn btn-primary btn-small', type: 'button', id: 'sn-end-rest', onclick: () => startRest() }, 'Rest for a minute') : null,
@@ -1105,6 +1310,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
           : h('button', { class: `btn ${rest ? 'btn-secondary' : 'btn-primary'} btn-small`, type: 'button', id: 'sn-end-retry', onclick: () => retrySong() }, 'Retry song', ' ', kbd('R')),
         sc ? h('button', { class: 'btn btn-secondary btn-small', type: 'button', id: 'sn-end-full', onclick: () => openLayer() }, 'Full results', ' ', kbd('F')) : null,
         h('button', { class: 'btn btn-quiet btn-small', type: 'button', id: 'sn-end-close', onclick: () => closeEnd() }, 'Close')),
+      // The forward step is the panel's LAST control in the DOM (tab order); grid places it.
+      endStep(sc),
     ].filter(Boolean));
     $end.classList.toggle('has-grade', !!sc);
     $end.setAttribute('aria-label', sc ? 'Results' : 'Line results');
@@ -1121,6 +1328,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     const px = narrow() ? 72 : 96;
     if (!$grade || end.medalPx === px) return;
     mountMedallion($grade, end.scored.medallion, { size: px, reveal: false, calm: true });
+    levelChip($grade);
     end.medalPx = px;
   }
   if (typeof matchMedia === 'function') {
@@ -1268,7 +1476,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (!end) openEnd();
     if (!end || !end.scored || layer) return;
     if (playing()) player.pause('stop');
-    const bests = readBests(storage), top = bestAny(bests, song.id);
+    const bests = readBests(storage), top = bestAny(bests, bestsId(song.id, level));
     const mine = await store.takesOf(song.id).catch(() => []);
     if (!end || layer) return;
     const pi = practiseIndex();
@@ -1821,12 +2029,16 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     const rec = recActive(), recording = !!recorder && recorder.state().status === 'recording';
     $recPill.hidden = !recording;
     $stage.classList.toggle('is-recording', recording);
-    document.title = recording && song ? `● Recording · ${song.title}` : song ? `${song.title} · Sing a song` : 'Sing a song · Music trainer';
+    paintLevel();
+    document.title = recording && song ? `● Recording · ${song.title}` : song ? `${song.title} · Your songs` : 'Your songs · Music trainer';
     if (mode === 'library') { cancelAnimationFrame(raf); raf = 0; paintAuto(); return; }
     if (!raf) raf = requestAnimationFrame(frame);
     $sing.dataset.mode = mode;
     $title.textContent = review ? `Your take · ${song.title}` : mode === 'tap' ? `Time the words · ${song.title}` : song.title;
     $artist.textContent = review ? `${dateWords(review.take.createdAt)} · ${lengthWords(review.take.seconds)}` : song.artist || '';
+    // Practise it hides while a take, a count-in or a Listen run goes (the plate is frozen then,
+    // spec 3.2 and 3.4): the same rule as the level switch, so H and D lock together.
+    $practiseHard.hidden = plate.hardest < 0 || levelLocked();
 
     const play = playing(), phase = micflow.state().phase;
     const word = mode === 'tap' ? (play ? 'This line starts now' : 'Start') : count ? 'Cancel' : rec ? 'Stop and keep' : play ? 'Pause' : mode === 'review' ? 'Play' : everPlayed ? 'Carry on singing' : 'Sing';
@@ -1932,7 +2144,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
   const glows = {};      // the soft round light under the head: one small canvas a verdict
   let auroraGain = document.documentElement.dataset.aurora !== 'off' ? 1 : 0, gainAt = 0, swayT = 0;
   function buildSprites() {
-    light = isLightColour(colours.stage) ?? document.documentElement.dataset.theme === 'dawn';
+    light = isLightColour(colours.stage) ?? document.documentElement.dataset.tone === 'light';
     sprites = colours['aurora-low'] && colours['aurora-crown'] ? auroraSprites({
       colours: { good: colours['aurora-in'], close: colours['aurora-close'], off: colours['aurora-off'], low: colours['aurora-low'], mid: colours['aurora-mid'], high: colours['aurora-high'], crown: colours['aurora-crown'], core: colours['voice-core'] },
       dpr: dprNow, calm: shell.calm(), light,
@@ -2043,22 +2255,36 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       auroraMs = performance.now() - a0;
     }
 
-    // the singer's ribbon: drawn only where sung, so the picture shows the rests
+    // the singer's ribbon: drawn only where sung, so the picture shows the rests. Stretches the
+    // level does not judge are fainter with no halo (spec 3.4), so a path per look: judged now
+    // or not, and (during a level cross-fade) judged before or not.
+    faintK = fadeK(faintSince, nowMs, { calm }); faintDrawn = 0;
     if (curve && curve.t.length) {
-      const path = new Path2D(), maxGap = (curve.hop || 0.02) * 2.5;
-      let open = false, prev = -1;
+      const looks = new Map(), maxGap = (curve.hop || 0.02) * 2.5;
+      const isJ = (spans, tt) => !spans || inSpans(spans, tt);
+      let open = false, prev = -1, prevKey = -1, px0 = 0, py0 = 0;
       for (let i = Math.max(0, firstAtOrAfter(curve.t, t0) - 1); i < curve.t.length && curve.t[i] <= t1 + 0.1; i++) {
         if (!curve.voiced[i] || !Number.isFinite(curve.midi[i])) { open = false; continue; }
-        const px = x(curve.t[i]), py = y(curve.midi[i] + 12 * octave);
-        if (open && prev >= 0 && curve.t[i] - curve.t[prev] <= maxGap) path.lineTo(px, py); else { path.moveTo(px, py); path.lineTo(px + 0.01, py); }
-        open = true; prev = i;
+        const tt = curve.t[i], now = isJ(judged, tt), was = faintK < 1 ? isJ(judgedWas, tt) : now, key = (was ? 2 : 0) + (now ? 1 : 0);
+        let e = looks.get(key);
+        if (!e) { e = { path: new Path2D(), look: noteLook(was, now, faintK) }; looks.set(key, e); }
+        const px = x(tt), py = y(curve.midi[i] + 12 * octave);
+        if (open && prev >= 0 && tt - curve.t[prev] <= maxGap) {
+          // A change of look mid-line: the new path picks up where the old one stopped.
+          if (key !== prevKey) e.path.moveTo(px0, py0);
+          e.path.lineTo(px, py);
+        } else { e.path.moveTo(px, py); e.path.lineTo(px + 0.01, py); }
+        if (!now) faintDrawn++;
+        open = true; prev = i; prevKey = key; px0 = px; py0 = py;
       }
       g.lineCap = 'round'; g.lineJoin = 'round';
       g.strokeStyle = colours.target;
-      const stroke = (from, to, alpha, width) => { g.save(); g.beginPath(); g.rect(from, 0, to - from, ch); g.clip(); g.globalAlpha = alpha; g.lineWidth = width; g.stroke(path); g.restore(); };
-      stroke(0, nowX, 0.35, 8);                 // already past: quieter
-      stroke(nowX, cw, 0.12, 20);               // ahead: a soft halo, then the line
-      stroke(nowX, cw, 0.92, 8);
+      const stroke = (path, from, to, alpha, width) => { g.save(); g.beginPath(); g.rect(from, 0, to - from, ch); g.clip(); g.globalAlpha = alpha; g.lineWidth = width; g.stroke(path); g.restore(); };
+      for (const { path, look } of looks.values()) {
+        stroke(path, 0, nowX, 0.35 * look.line, 8);                       // already past: quieter
+        if (look.halo > 0) stroke(path, nowX, cw, 0.12 * look.halo, 20);  // ahead: a soft halo, then the line
+        stroke(path, nowX, cw, 0.92 * look.line, 8);
+      }
     }
 
     // the count-in beads before each phrase: hollow until they cross the now line
@@ -2277,7 +2503,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     $count.classList.toggle('is-on', !!c);
     if (!c) { countShown = null; countSaid = ''; return; }
     // The ways this run is sung with, in the card's small line ("By ear · no guide voice").
-    const ways = c.kind === 'start' ? waysWords().map((w, k) => (k ? w.toLowerCase() : w)).join(' · ') : '';
+    // The level first when the song offers more than one (difficulty spec 3.3).
+    const ways = c.kind === 'start' ? [levelCard(level, offered), ...waysWords()].filter(Boolean).map((w, k) => (k ? w.toLowerCase() : w)).join(' · ') : '';
     if ($countWays.textContent !== ways) $countWays.textContent = ways;
     // state().count names what the card SHOWS: it is set only once this frame draws (or
     // already drew) these numbers, never before the hold below sends the frame away; it was
@@ -2319,7 +2546,8 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     let word = 'Listening', num = 'sing with the ribbon', kind = 'listening';
     // Nothing to match while the singer rests: say so, whether or not the owner is singing.
     if (targetAt(songTime()) === null && !(fresh && lastRead.cents !== null)) { word = 'The singer rests'; num = 'nothing to match here'; kind = 'free'; }
-    else if (fresh) {
+    // On an unjudged note (Easy / Normal) the readout keeps listening: it says nothing new.
+    else if (fresh && !(lastRead.cents === null && judgeAt(songTime()) === null)) {
       const c = lastRead.cents, v = verdict(c);
       // A whole octave away is the right note in another octave: say so, and how to fix it.
       const oct = Math.abs(Math.abs(c) - 1200) <= CONFIG.verdict.closeCents * 2 ? (c < 0 ? 'lower' : 'higher') : null;
@@ -2396,7 +2624,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
     // In the library 1 to 5 are the places, as everywhere (spec 3.3): only below this line
     // are the digits the song's own. (In the app the shell already stands aside for them,
-    // skyroutes.js screenOwnsKey; this keeps sing.html's top-bar tabs out of a song too.)
+    // skyroutes.js screenOwnsKey; this keeps any other digit handler out of a song too.)
     if (mode === 'library' || !transport) return;
     if (/^[0-9]$/.test(e.key) && !typing) e.preventDefault();
     // The shooting star is on its way: any key goes straight to the final state.
@@ -2430,7 +2658,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       case ',': act(() => jump((o) => transport.prevLine(o))); break;
       case '.': act(() => jump((o) => transport.nextLine(o))); break;
       case 'b': case 'B': act(() => jump((o) => transport.replayLine(o))); break;
-      case 'Home': case '0': act(() => jump((o) => transport.restart(o))); break;
+      case 'Home': case '0': if (!onRadio) act(() => jump((o) => transport.restart(o))); break;
       case 'k': case 'K': act(() => { if (count) stopAll('stop'); else if (playing()) transport.pause(); paint(); }); break;
       case 'p': case 'P': if (mode === 'sing' && !recActive()) act(listen); break;
       // R: with the results or the take review showing, a new take from the top (spec 6.2);
@@ -2438,6 +2666,9 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       case 'r': case 'R': if (!recActive() && ((end && end.open) || mode === 'review')) act(retrySong); else if (mode === 'sing') act(recordPress); break;
       case 'l': case 'L': if (!recActive() && ((end && end.open) || mode === 'review') && practiseIndex() >= 0) act(() => retryLine(practiseIndex())); break;
       case 'm': case 'M': if (mode === 'sing') act(openWays); break;
+      case 'h': case 'H': if (!$practiseHard.hidden) act(practiseHardest); break;
+      case 'n': case 'N': if (end && end.open) { const $n = $end.querySelector('#sn-next'); if ($n) act(() => $n.click()); } break;
+      case 'd': case 'D': if (!$level.hidden && !levelLocked()) act(() => { const i = offered.indexOf(level); setLevel(offered[(i + 1) % offered.length], { say: true }); }); break;
       case 'f': case 'F': if (!recActive() && ((end && end.open) || (mode === 'review' && review && review.lines))) act(openLayer); break;
       case '[': act(() => (review ? setNudge(-1) : setGuide(levels.singer - SONG.levels.keyStep))); break;
       case ']': act(() => (review ? setNudge(1) : setGuide(levels.singer + SONG.levels.keyStep))); break;
@@ -2464,6 +2695,9 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
       // the stage's last frame: its cost, the curtain's share of it, columns drawn, the
       // guard's step (0 full, 1 wide columns, 2 off), voice line pieces drawn, the newest
       // point's verdict
+      // the level switch: the level, what is offered, whether it is locked (a run is going), and
+      // the stage's faint notes (k: the cross-fade, 1 = settled; points drawn faint last frame)
+      level: { id: level, offered: [...offered], locked: levelLocked(), faint: { k: faintK, drawn: faintDrawn } },
       stageMs, auroraMs, auroraCols, auroraTier, lineDrawn, headDrawn, ways: song ? waysOn() : {}, voiceKind: trail.length ? trail[trail.length - 1].kind : null,
       // line stars: the row as drawn; the end panel; the line on repeat; the shooting star and chime
       stars: [...starEls].map(([i, el]) => ({ i, level: el.dataset.level })).sort((a, b) => a.i - b.i),
@@ -2513,7 +2747,9 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     if (destroyed) return;
     destroyed = true;
     const kept = recActive();
-    const samples = kept ? auroraSamples() : null;
+    // The trail only fills from the mic, so a take that already FINISHED counts too, not only
+    // one cut short by leaving (page-layout S4).
+    const samples = auroraSamples();
     // 1. the take ends and is kept, the count-in is cancelled, the player pauses, the mic goes
     stopAll('left');
     // 2. sound out: a 120 ms ramp to 0, then the context closes (no click, no tail)
@@ -2550,7 +2786,7 @@ export function mountSongs(root, { shell, micflow, settings, storage, service, s
     // toast is the shell's, on document.body: it outlives this screen (4 s, polite).
     if (kept) toast('Your take is kept in My songs.');
     // 6. the take's sky, memory only, for the home (slice 4)
-    if (samples) service.keepAurora(samples);
+    if (samples) { service.keepAurora(samples); keepGlow(samples); }
     if (window.__singnow === app) delete window.__singnow;
   };
 

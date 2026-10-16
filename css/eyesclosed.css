@@ -32,7 +32,7 @@
 /* The verdict and the compare strip: a reserved place under the stage, so nothing moves when
    they come and go. Wide areas, so they fade. */
 .ec-slot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); gap: var(--s4); min-height: 6.5rem; align-items: start; }
-.ec-card, .ec-compare { padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
+.ec-card, .ec-compare { box-shadow: var(--shadow-card); opacity: 1; transition: opacity var(--d-base) var(--ease), visibility 0s linear 0s; }
 .ec-card[data-shown="no"], .ec-compare[data-shown="no"] { opacity: 0; visibility: hidden; transition: opacity var(--d-base) var(--ease), visibility 0s linear var(--d-base); }
 .ec-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); font: var(--t-h1); color: var(--text); }
 .ec-head .icon { flex: none; color: var(--muted); }

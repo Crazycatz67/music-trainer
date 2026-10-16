@@ -20,7 +20,7 @@
 .figure-thumb { display: block; flex: none; width: 100%; height: 120px; background: linear-gradient(var(--stage-top), var(--stage)); border-bottom: 1px solid var(--line); }
 .figure-thumb line { stroke-width: 1.5; stroke-linecap: round; }
 .figure-thumb .is-sky { fill: var(--text); fill-opacity: .3; }
-[data-theme="dawn"] .figure-thumb .is-sky { fill: var(--muted); fill-opacity: .34; }
+[data-tone="light"] .figure-thumb .is-sky { fill: var(--muted); fill-opacity: .34; }
 .figure-thumb .is-guide { stroke: var(--line-strong); stroke-dasharray: 1 5; opacity: .6; }
 .figure-thumb .is-drawn { stroke: var(--gold); stroke-width: 2; }
 .figure-thumb .is-closing { stroke: var(--gold); opacity: .7; }

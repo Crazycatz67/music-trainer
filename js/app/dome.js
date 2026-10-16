@@ -30,9 +30,12 @@
 //                                --sky-dim. The dim is drawn in the frame, never CSS on the canvas.
 //   dome.setTheme()              re-read the colour tokens (after data-theme changes)
 //   dome.setCalm(bool)           Calm motion: no twinkle, no parallax, no pointer glow, no press ring
-//   dome.setLit(placeId | null)  the place you are inside: its own figure (for Tonight the moon
-//                                and its step stars, for Your Sky the record) keeps full
-//                                strength while everything else dims. null = at home.
+//   dome.setLit(placeId | null, inside = placeId != null)  the place you are inside: its own
+//                                figure (for Tonight the moon and its step stars, for Your Sky
+//                                the record) keeps full strength while everything else dims.
+//                                null = at home; (null, true) = inside a place with NO figure lit
+//                                (a stage screen, page-layout 3.2): the other places' figures
+//                                stay gone too.
 //   dome.setToday({ done, total } | null)   today's session: the moon is lit by done / total
 //                                (full, with a gold rim, when all are done) and `total` step
 //                                stars (8 at most) hang under it: done = lit gold, the next =
@@ -64,6 +67,17 @@
 //                                lit false = hollow stars and a dotted line. The newest 2,000
 //                                stars and 160 line pieces are drawn; totals are the caller's words.
 //   dome.setMicLive(bool)        true = render() and snapshot() draw NOTHING and count `blocked`
+//   dome.setReplay({ cols, calm = false } | null, { cut = false }?)   the last take as an aurora
+//                                (page-layout S4): cols = takeglow.glowShape(samples), az in degrees
+//                                from the home view's centre. Plays ONCE on its own clock (takeglow
+//                                glowAt: 8 s unroll, 20 s sway, 6 s fade; Calm 0.6/20/0.6 s, no
+//                                sway) and is gone after: it never loops. The clock only moves in
+//                                tick(), by at most 100 ms a call, so a gap (a live mic, a rest)
+//                                pauses it instead of jumping it to the end. null = fade out over
+//                                600 ms, never a cut; cut = gone at once (the picture is replaced
+//                                anyway: sky.openAt). Peak alpha 0.35 added in Dusk, 0.22 over in Dawn.
+//   dome.glowing() -> boolean    a replay is on the dome (the caller keeps frames coming for it:
+//                                tick() does NOT report it as busy)
 //   dome.tick(dtMs) -> boolean   advance every ease; true = draw again next frame
 //   dome.render() -> ms          draws ONE frame, returns the main-thread ms it took.
 //                                Never draws by itself: sky.js decides when (on demand).
@@ -76,12 +90,14 @@
 //   The look's tunable numbers are the constants STAR, FIGURE, POINTER, PRESS, VOICE, SKY, MOON,
 //   STEP, EARNED and EASE_MS below, with a note of which of them drive the flash number.
 //   dome.destroy()
-// Budget (spec section 12): at most 8 draw calls (6 here, 7 with catalogue figures), one
+// Budget (spec section 12): at most 8 draw calls (6 here, 7 with catalogue figures, +1 for
+// the few seconds a replay aurora shows), one
 // texture (the moon, painted in code), no lights, shadows, post-processing or loaded assets.
 // Departure, by the overseer's brief: several thousand stars, not the spec's 1,200.
 // ---------------------------------------------------------------------------------------
 
-import { PLACES, DOME, QUALITY, RECORD, STEPS, stepStars, skyVector, celestialVector, skyRotation, noteAlt, proceduralStars, MILKY_POLE } from './skymap.js';
+import { PLACES, DOME, QUALITY, RECORD, STEPS, HOME, stepStars, skyVector, celestialVector, skyRotation, noteAlt, proceduralStars, MILKY_POLE, layout, unproject, wrap180 } from './skymap.js';
+import { glowAt } from './takeglow.js';
 
 const THREE_URL = new URL('../../vendor/three-0.161.0/three.module.min.js', import.meta.url).href;
 const FIGURE_R = DOME.radius * 0.98;
@@ -148,8 +164,13 @@ const MOON = { lit: 0.86, dark: 0.09, halo: [[80, 0.2], [127, 0.09]], rimPx: 3.5
 // Tonight's step stars: done = lit gold; next = hollow and breathing; later = hollow, faint.
 const STEP = { px: 38, doneAlpha: 1, nextAlpha: 0.95, laterAlpha: 0.6, breatheS: 3.6, breatheGrow: 0.16, breatheDim: 0.25 };
 // Your Sky: gold = a clean round.
+// The replay aurora. peak/peakPale: alpha at its brightest (Dusk adds light; Dawn paints over a
+// pale sky, so less). driftDegPerSec: the rays' sideways crawl (1 degree in 9 s, below any
+// flash). outMs: the fade when it is called off early.
+const REPLAY = { peak: 0.35, peakPale: 0.22, driftDegPerSec: 1 / 9, outMs: 600, r: 0.97 };
 const EARNED = { starPx: 34, goldAlpha: 1, plainAlpha: 0.85, goldLine: 0.85, plainLine: 0.5, lineHalf: 0.6 };
 const glsl = (n) => Number(n).toFixed(4);
+const CATALOGUE_LINE = { dusk: 0.22, pale: 0.3 };
 export const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i;
 
 export class DomeUnavailable extends Error {
@@ -167,6 +188,89 @@ const hash01 = (n) => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// Clearings (living-sky spec 2.3 rule 2). The real constellation lines turn with the stars,
+// so they would sooner or later run through a place's figure or across its label. Round
+// everything anchored to the owner sits a clearing: a box in the horizon frame (degrees)
+// grown by `grow` into a rounded box, with a `softDeg` fade outside it. Inside, real lines
+// go to alpha 0 and real stars dim to starDim. The shader (CLEAR_GLSL) and clearAmount()
+// are the same sum, so the Node check proves what the GPU draws.
+// Labels are HTML placed in px, so their sky box is the union of where layout() puts them
+// at home and facing their own place, over the small, middle and large windows: a small
+// window spends more degrees on the same pill.
+// Contract: clearings() -> [{ az, halfAz, alt, halfAlt, grow, kind, id }] (degrees, az in
+// -180..180, at most CLEAR.max); clearAmount(az, alt, boxes) -> 0 (clear) .. 1 (line shows).
+export const CLEAR = Object.freeze({ max: 20, growDeg: 5, labelGrowDeg: 1.5, softDeg: 4, starDim: 0.45,
+  views: Object.freeze([{ w: 1024, h: 640 }, { w: 1440, h: 900 }, { w: 1920, h: 1080 }]) });
+const DEG = Math.PI / 180;
+
+function boxOf(points, grow, kind, id) {
+  // Azimuths relative to the first point, so a box across 180 degrees does not wrap wide.
+  const ref = points[0][0];
+  let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+  for (const [az, alt] of points) {
+    const r = wrap180(az - ref);
+    a0 = Math.min(a0, r); a1 = Math.max(a1, r); b0 = Math.min(b0, alt); b1 = Math.max(b1, alt);
+  }
+  return { az: wrap180(ref + (a0 + a1) / 2), halfAz: (a1 - a0) / 2, alt: (b0 + b1) / 2, halfAlt: (b1 - b0) / 2, grow, kind, id };
+}
+
+export function clearings(views = CLEAR.views) {
+  const boxes = [];
+  for (const pl of PLACES) {
+    if (pl.figure === 'stars') boxes.push(boxOf(pl.stars, CLEAR.growDeg, 'figure', pl.id));
+    else if (pl.figure === 'moon') {
+      const r = pl.moonDeg / 2;
+      boxes.push(boxOf([[pl.az - r, pl.alt - r], [pl.az + r, pl.alt + r], ...stepStars(STEPS.max, pl)], CLEAR.growDeg, 'figure', pl.id));
+    } else {
+      // Your Sky: the earned record's whole block (its slots) is one band.
+      boxes.push(boxOf([[RECORD.azMid - RECORD.azSpan / 2, RECORD.altFrom], [RECORD.azMid + RECORD.azSpan / 2, RECORD.altTo]], CLEAR.growDeg, 'band', pl.id));
+    }
+  }
+  for (const pl of PLACES) {
+    const pts = [];
+    for (const vp of views) for (const cam of [HOME, { yaw: pl.face.yaw, pitch: pl.face.pitch, fov: HOME.fov }]) {
+      const e = layout(cam, vp).find((x) => x.id === pl.id);
+      if (!e || e.shape !== 'open') continue;
+      // Edges as well as corners: a straight screen edge is a curve on the sky.
+      for (let i = 0; i <= 4; i++) for (const [x, y] of [[e.x + e.w * i / 4, e.y], [e.x + e.w * i / 4, e.y + e.h], [e.x, e.y + e.h * i / 4], [e.x + e.w, e.y + e.h * i / 4]]) {
+        const u = unproject(x, y, cam, vp);
+        pts.push([u.az, u.alt]);
+      }
+    }
+    if (pts.length) boxes.push(boxOf(pts, CLEAR.labelGrowDeg, 'label', pl.id));
+  }
+  return boxes.slice(0, CLEAR.max);
+}
+
+export function clearAmount(az, alt, boxes) {
+  let f = 1;
+  for (const b of boxes) {
+    const dx = Math.max(Math.abs(wrap180(az - b.az)) - b.halfAz, 0) * Math.cos(alt * DEG);
+    const dy = Math.max(Math.abs(alt - b.alt) - b.halfAlt, 0);
+    f = Math.min(f, smooth(0, CLEAR.softDeg, Math.hypot(dx, dy) - b.grow));
+  }
+  return f;
+}
+
+// The same sum on the GPU, for a unit direction d in the horizon frame.
+const CLEAR_GLSL = `
+uniform vec4 uClear[${CLEAR.max}];
+uniform float uClearGrow[${CLEAR.max}];
+uniform float uClearN;
+float clearAmount(vec3 d) {
+  float alt = degrees(asin(clamp(d.y, -1.0, 1.0)));
+  float az = degrees(atan(d.x, -d.z));
+  float f = 1.0;
+  for (int i = 0; i < ${CLEAR.max}; i++) {
+    if (float(i) >= uClearN) break;
+    vec4 b = uClear[i];
+    float dx = max(abs(mod(az - b.x + 180.0, 360.0) - 180.0) - b.y, 0.0) * cos(radians(alt));
+    float dy = max(abs(alt - b.z) - b.w, 0.0);
+    f = min(f, smoothstep(0.0, ${glsl(CLEAR.softDeg)}, length(vec2(dx, dy)) - uClearGrow[i]));
+  }
+  return f;
+}`;
 
 // Every colour ends the same way: pulled towards the page colour by uDim (inside a place),
 // so the dim is part of the drawn frame.
@@ -234,8 +338,10 @@ attribute vec4 aTint;    // colour temperature r g b, share of the sprite that i
 attribute vec2 aDepth;   // shell depth (0 = on the dome), twinkle period in seconds
 uniform float uScale, uMaxPoint, uTime, uTwinkle, uParallax, uKeep, uPointerAmt, uPressAmt, uVoiceAmt, uVoiceY, uRipple, uTemp, uAlpha, uDim, uLiftCap;
 uniform vec3 uLook, uPointer, uPress, uInk;
+uniform float uClearStars;   // 1 = the real sky: stars dim inside a clearing
 varying vec4 vCol;
 varying float vCore;
+${CLEAR_GLSL}
 void main() {
   // Depth: nearer shells are seen from a little behind the centre, so they slide against
   // the far ones as the view turns. The far shell (depth 0) stays locked to the figures.
@@ -249,7 +355,8 @@ void main() {
   float tw = aStar.z < 0.0 ? 0.0 : sin(6.2831853 * (uTime / aDepth.y + aStar.z));
   float lum = aStar.y * (1.0 + lift) * (1.0 + ${glsl(STAR.twinkleDepth)} * uTwinkle * tw) * (1.0 - smoothstep(uKeep, uKeep + 0.08, aStar.w));
   // Light can lift past full strength only as far as uLiftCap (ink on a pale sky cannot).
-  vCol = vec4(mix(vec3(1.0), aTint.rgb, uTemp) * uInk, min(uLiftCap, lum) * uAlpha * uDim);
+  float keep = uClearStars > 0.0 ? mix(${glsl(CLEAR.starDim)}, 1.0, clearAmount(d)) : 1.0;
+  vCol = vec4(mix(vec3(1.0), aTint.rgb, uTemp) * uInk, min(uLiftCap, lum) * uAlpha * uDim * keep);
   vCore = aTint.a;
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
   gl_PointSize = min(uMaxPoint, aStar.x * uScale * (1.0 + ${glsl(POINTER.grow)} * lift));
@@ -306,6 +413,30 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+// The replay aurora: brightest just above its lower edge, fading up into the crown colour;
+// slow rays crawl sideways (uDrift, degrees); uReveal unrolls it left to right with a soft edge.
+const REPLAY_VERT = `
+attribute vec3 aCol;
+attribute float aAz, aShare, aV;
+varying vec3 vCol;
+varying float vAz, vShare, vV;
+void main() {
+  vCol = aCol; vAz = aAz; vShare = aShare; vV = aV;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+const REPLAY_FRAG = `
+uniform float uDim, uOthers, uReveal, uAlpha, uPeak, uDrift;
+uniform vec3 uCrown;
+varying vec3 vCol;
+varying float vAz, vShare, vV;
+void main() {
+  float fall = min(1.0, 1.3 * smoothstep(0.0, 0.15, vV) * pow(1.0 - vV, 1.5));
+  float rays = 0.7 + 0.3 * (0.6 * sin((vAz + uDrift) * 0.7) + 0.4 * sin((vAz - uDrift) * 1.9 + 1.3));
+  float shown = 1.0 - smoothstep(uReveal * 1.04 - 0.04, uReveal * 1.04, vShare);
+  vec3 col = mix(vCol, uCrown, smoothstep(0.55, 1.0, vV));
+  gl_FragColor = vec4(col, uPeak * uAlpha * uDim * uOthers * fall * rays * shown);
+}`;
+
 // Lines are thin strips of triangles, not GL lines: those are 1 px whatever is asked (spec
 // section 14), and a strip can carry a soft glow across its width.
 const LINE_VERT = `
@@ -315,15 +446,25 @@ attribute float aKeep;   // 1 = a line of the place you are inside: not dimmed
 uniform float uDim, uOthers;
 varying vec4 vCol;
 varying vec3 vLine;
+#ifdef CLEARING
+varying vec3 vDir;
+#endif
 void main() {
   vCol = vec4(aCol.rgb, aCol.a * mix(uDim * uOthers, 1.0, aKeep));
   vLine = aLine;
+#ifdef CLEARING
+  vDir = (modelMatrix * vec4(position, 1.0)).xyz;
+#endif
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 const LINE_FRAG = `
 uniform float uHalo;
 varying vec4 vCol;
 varying vec3 vLine;
+#ifdef CLEARING
+varying vec3 vDir;
+${CLEAR_GLSL}
+#endif
 void main() {
   float a = abs(vLine.x);
   float core = smoothstep(0.30, 0.10, a);
@@ -331,6 +472,10 @@ void main() {
   float f = fract(vLine.y / 1.9);
   float dash = mix(1.0, smoothstep(0.0, 0.12, f) * smoothstep(0.62, 0.50, f), vLine.z);
   gl_FragColor = vec4(vCol.rgb, min(1.0, vCol.a * (core * ${glsl(FIGURE.lineCore)} + glow)) * dash);
+#ifdef CLEARING
+  // Per pixel, not per vertex: a long piece can cross a clearing with both ends outside it.
+  gl_FragColor.a *= clearAmount(normalize(vDir));
+#endif
   #include <colorspace_fragment>
 }`;
 
@@ -396,12 +541,18 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
   let frames = 0, blocked = 0, lost = false, micLive = false, calm = false;
   let pixelRatio = 1, size = { w: 1, h: 1 }, tier = 'full', pale = false, skyDim = 0.35, inside = 0;
 
+  const CLEARINGS = clearings();
   // Shared by every material: the dim, and the sizes that follow the window and the zoom.
   const U = {
     dim: { value: 1 }, others: { value: 1 }, bg: { value: new THREE.Color() }, scale: { value: 1 }, maxPoint: { value: maxPoint }, halo: { value: 1 },
     voiceAmt: { value: 0 }, voiceY: { value: 0.5 }, ripple: { value: 0 },
     pointer: { value: new THREE.Vector3(0, 1, 0) }, pointerAmt: { value: 0 },
+    clear: { value: Array.from({ length: CLEAR.max }, () => new THREE.Vector4()) }, clearGrow: { value: new Array(CLEAR.max).fill(0) }, clearN: { value: 0 },
   };
+  // The clearings never move (they belong to the owner's frame), so they are worked out once.
+  CLEARINGS.forEach((b, i) => { U.clear.value[i].set(b.az, b.halfAz, b.alt, b.halfAlt); U.clearGrow.value[i] = b.grow; });
+  U.clearN.value = CLEARINGS.length;
+  const clearU = { uClear: U.clear, uClearGrow: U.clearGrow, uClearN: U.clearN };
 
   // 1. The sky: the upper part of a sphere; gradient, horizon glow, Milky Way and voice
   // band are all worked out per pixel from the direction, so the mesh can stay coarse.
@@ -421,8 +572,10 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
   const starMat = new THREE.ShaderMaterial({ vertexShader: STAR_VERT, fragmentShader: STAR_FRAG, ...flat,
     uniforms: { uScale: U.scale, uMaxPoint: U.maxPoint, uDim: U.dim, uTime: { value: 0 }, uTwinkle: { value: 0 }, uParallax: { value: 0 }, uKeep: { value: 1.1 },
       uPointerAmt: { value: 0 }, uPressAmt: { value: 0 }, uPress: { value: new THREE.Vector3(0, 1, 0) }, uVoiceAmt: U.voiceAmt, uVoiceY: U.voiceY, uRipple: U.ripple, uTemp: { value: 1 }, uAlpha: { value: 1 }, uLiftCap: { value: 1 },
-      uLook: { value: new THREE.Vector3(0, 0, -1) }, uPointer: U.pointer, uInk: { value: new THREE.Color() } } });
-  const lineMat = () => new THREE.ShaderMaterial({ vertexShader: LINE_VERT, fragmentShader: LINE_FRAG, side: THREE.DoubleSide, ...flat, uniforms: { uDim: U.dim, uOthers: U.others, uHalo: U.halo } });
+      uLook: { value: new THREE.Vector3(0, 0, -1) }, uPointer: U.pointer, uInk: { value: new THREE.Color() }, uClearStars: { value: 0 }, ...clearU } });
+  // clear: the real constellation lines, which fade inside the clearings (spec 2.3).
+  const lineMat = (clear = false) => new THREE.ShaderMaterial({ vertexShader: LINE_VERT, fragmentShader: LINE_FRAG, side: THREE.DoubleSide, ...flat,
+    defines: clear ? { CLEARING: 1 } : {}, uniforms: { uDim: U.dim, uOthers: U.others, uHalo: U.halo, ...(clear ? clearU : {}) } });
   let stars = null, starCount = 0, catFigures = null, catFigureCount = 0, catalogueLines = [];
 
   // A strip of two triangles from p to q on the dome, `half` dome units to each side.
@@ -488,6 +641,8 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
       catalogueLines.push(fig.id);
     }
     catFigureCount = (cat.figures || []).length;
+    // Real stars dim in the clearings only with real lines; the made-up sky is left as built.
+    starMat.uniforms.uClearStars.value = catalogueLines.length ? 1 : 0;
     if (catalogueLines.length) {
       const g2 = new THREE.BufferGeometry();
       g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(out.pos), 3));
@@ -495,7 +650,7 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
       g2.setAttribute('aCol', new THREE.BufferAttribute(new Float32Array(catalogueLines.length * 16), 4));
       g2.setAttribute('aKeep', new THREE.BufferAttribute(new Float32Array(catalogueLines.length * 4), 1));
       g2.setIndex(quadIndex(catalogueLines.length));
-      catFigures = new THREE.Mesh(g2, lineMat());
+      catFigures = new THREE.Mesh(g2, lineMat(true));
       catFigures.frustumCulled = false;
       catFigures.renderOrder = 2;
       starSphere.add(catFigures);
@@ -666,6 +821,9 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
   const hover = Object.fromEntries(PLACES.map((p) => [p.id, { now: 0, goal: 0 }]));
   // keep: 1 for the place you are inside (its figure is not dimmed), 0 for the rest.
   const keep = Object.fromEntries(PLACES.map((p) => [p.id, { now: 0, goal: 0 }]));
+  // away: 1 while you are inside a place, lit figure or not. The other figures leave on this,
+  // not on `keep`: setLit(null) on a stage screen used to bring every figure back (others 1).
+  const away = { now: 0, goal: 0 };
   const ease = { today: { now: PLAIN_SHARE, goal: PLAIN_SHARE }, pointer: { now: 0, goal: 0 }, voice: { now: 0, goal: 0 }, twinkle: { now: 0, goal: 0 }, parallax: { now: 0, goal: 0 }, keep: { now: 1.1, goal: 1.1 }, earned: { now: 0, goal: 0 } };
   let twinkleWanted = false, pointerWanted = false, ring = null, voiceAltGoal = null, voiceAlt = 30, time = 0;
   const towards = (e, dtMs, ms) => {
@@ -763,7 +921,9 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
   function paintCatalogue() {
     if (!catFigures) return;
     const lc = catFigures.geometry.attributes.aCol;
-    for (let i = 0; i < lc.count; i++) lc.setXYZW(i, colours.figure.r, colours.figure.g, colours.figure.b, 0.3);
+    // Spec 2.1 layer 3: quiet grey, 0.22 on Dusk's dark sky, 0.30 as ink on Dawn's.
+    const a = pale ? CATALOGUE_LINE.pale : CATALOGUE_LINE.dusk;
+    for (let i = 0; i < lc.count; i++) lc.setXYZW(i, colours.figure.r, colours.figure.g, colours.figure.b, a);
     lc.needsUpdate = true;
   }
 
@@ -801,6 +961,83 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
     paintEarned();
   }
 
+  // ---- the replay aurora (page-layout S4): one ribbon mesh, alive only while it plays -------
+  // Two vertices a column (bottom, top) in the HORIZON frame, centred on the home view, so it
+  // hangs where the person looks on coming home whichever way the stars have turned.
+  let replay = null;   // { mesh, cols, calm, ms, out (ms since called off, or null) }
+  function paintReplay() {
+    if (!replay) return;
+    const { cols, mesh } = replay, col = mesh.geometry.attributes.aCol;
+    const heights = cols.map((c) => c.alt), lo = Math.min(...heights), span = Math.max(1e-6, Math.max(...heights) - lo);
+    cols.forEach((c, i) => {
+      // Judged takes wear their verdict; free singing is coloured by its own height (low/mid/high).
+      if (c.kind === 'in' || c.kind === 'close' || c.kind === 'off') scratch.copy(colours[`aurora-${c.kind}`]);
+      else {
+        const h = (c.alt - lo) / span;
+        if (h < 0.5) mixInto(scratch, colours['aurora-low'], colours['aurora-mid'], h * 2);
+        else mixInto(scratch, colours['aurora-mid'], colours['aurora-high'], h * 2 - 1);
+      }
+      col.setXYZ(2 * i, scratch.r, scratch.g, scratch.b); col.setXYZ(2 * i + 1, scratch.r, scratch.g, scratch.b);
+    });
+    col.needsUpdate = true;
+    const u = mesh.material.uniforms;
+    u.uCrown.value.copy(colours['aurora-crown']);
+    u.uPeak.value = pale ? REPLAY.peakPale : REPLAY.peak;
+    mesh.material.blending = pale ? THREE.NormalBlending : THREE.AdditiveBlending;
+    mesh.material.needsUpdate = true;
+  }
+  function dropReplay() {
+    if (!replay) return;
+    scene.remove(replay.mesh); replay.mesh.geometry.dispose(); replay.mesh.material.dispose();
+    replay = null;
+  }
+  function setReplay(r, { cut = false } = {}) {
+    if (!r || !Array.isArray(r.cols) || !r.cols.length) {
+      if (cut) dropReplay();
+      else if (replay && replay.out === null) replay.out = 0;
+      return;
+    }
+    dropReplay();
+    // A single column would be a line with no width: give it a narrow band of its own.
+    const cols = r.cols.length > 1 ? r.cols : [{ ...r.cols[0], az: r.cols[0].az - 1.5 }, { ...r.cols[0], az: r.cols[0].az + 1.5 }];
+    const n = cols.length, pos = new Float32Array(n * 6), az = new Float32Array(n * 2), share = new Float32Array(n * 2), v = new Float32Array(n * 2), idx = [];
+    cols.forEach((c, i) => {
+      pos.set(at(HOME.yaw + c.az, c.alt, FIGURE_R * REPLAY.r), i * 6);
+      pos.set(at(HOME.yaw + c.az, c.top, FIGURE_R * REPLAY.r), i * 6 + 3);
+      az[2 * i] = az[2 * i + 1] = c.az;
+      share[2 * i] = share[2 * i + 1] = i / (n - 1);
+      v[2 * i] = 0; v[2 * i + 1] = 1;
+      if (i < n - 1) { const a = 2 * i; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aCol', new THREE.BufferAttribute(new Float32Array(n * 6), 3));
+    geo.setAttribute('aAz', new THREE.BufferAttribute(az, 1));
+    geo.setAttribute('aShare', new THREE.BufferAttribute(share, 1));
+    geo.setAttribute('aV', new THREE.BufferAttribute(v, 1));
+    geo.setIndex(idx);
+    const mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ vertexShader: REPLAY_VERT, fragmentShader: REPLAY_FRAG, side: THREE.DoubleSide, ...flat,
+      uniforms: { uDim: U.dim, uOthers: U.others, uReveal: { value: 0 }, uAlpha: { value: 0 }, uPeak: { value: REPLAY.peak }, uDrift: { value: 0 }, uCrown: { value: new THREE.Color() } } }));
+    mesh.renderOrder = 0.5;            // over the sky's gradient, under every star, line and hill
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    replay = { mesh, cols, calm: !!r.calm || calm, ms: 0, out: null };
+    paintReplay();
+    stepReplay(0);
+  }
+  // Advance the replay's own clock; it removes itself when glowAt says it is over.
+  function stepReplay(dt) {
+    if (!replay) return;
+    replay.ms += dt;
+    const g = glowAt(replay.ms, { calm: replay.calm });
+    let alpha = g.alpha;
+    if (replay.out !== null) { replay.out += dt; alpha *= Math.max(0, 1 - replay.out / REPLAY.outMs); }
+    if (g.done || (replay.out !== null && replay.out >= REPLAY.outMs)) { dropReplay(); return; }
+    const u = replay.mesh.material.uniforms;
+    u.uReveal.value = g.reveal; u.uAlpha.value = alpha;
+    if (!replay.calm) u.uDrift.value = (replay.ms / 1000) * REPLAY.driftDegPerSec;
+  }
+
   function setTheme() {
     const css = getComputedStyle(canvas);
     // Colours come from the tokens only (no raw values in code). If css/sky.css is missing,
@@ -814,6 +1051,7 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
     colours.gold = read('--gold', '--text');
     colours.bg = read('--bg', '--sky-ground');
     colours.moonlit = read('--sky-moonlit', '--text');
+    for (const k of ['in', 'close', 'off', 'low', 'mid', 'high', 'crown']) colours[`aurora-${k}`] = read(`--aurora-${k}`, '--accent');
     skyDim = Math.min(1, Math.max(0, parseFloat(css.getPropertyValue('--sky-dim')) || 0.35));
     // On a pale (Dawn) sky light has nothing to add to: stars are plain ink dots at half
     // strength, drawn over the sky, not added to it.
@@ -848,7 +1086,7 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
     renderer.setClearColor(colours.ground, 1);
     applyDim();
     paintMoon(ease.today.now);
-    paintFigures(); paintSteps(); paintRing(); paintEarned(); paintCatalogue();
+    paintFigures(); paintSteps(); paintRing(); paintEarned(); paintCatalogue(); paintReplay();
   }
   function applyDim() {
     U.dim.value = 1 - (1 - skyDim) * inside;
@@ -859,6 +1097,7 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
     // labs/sky-lab.html "flash-travel"). They come back as you return.
     let kept = 0;
     for (const k of Object.values(keep)) kept = Math.max(kept, k.now);
+    kept = Math.max(kept, away.now);
     U.others.value = 1 - kept * (1 - FIGURE.othersInside);
     const rest = U.dim.value * U.others.value;
     moon.material.opacity = rest + (1 - rest) * keep[moonPlace.id].now;
@@ -899,7 +1138,7 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
     setTheme,
     setCalm(on) { calm = !!on; goals(); if (calm) { ring = null; paintRing(); } },
     setHover(id) { for (const pl of PLACES) hover[pl.id].goal = pl.id === id ? 1 : 0; },
-    setLit(id) { for (const pl of PLACES) keep[pl.id].goal = pl.id === id ? 1 : 0; },
+    setLit(id, inPlace = id != null) { for (const pl of PLACES) keep[pl.id].goal = pl.id === id ? 1 : 0; away.goal = inPlace ? 1 : 0; },
     setToday,
     setPointer(dir) {
       pointerWanted = Array.isArray(dir);
@@ -933,12 +1172,15 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
     },
     setEarned,
     setMicLive(on) { micLive = !!on; },
+    setReplay,
+    glowing: () => !!replay,
     tick(dtMs) {
       const dt = Math.max(0, Math.min(100, dtMs));
+      stepReplay(dt);
       let busy = false, figures = false;
       for (const h of Object.values(hover)) if (towards(h, dtMs, EASE_MS.hover)) { figures = true; busy = busy || h.now !== h.goal; }
       let lit = false;
-      for (const k of Object.values(keep)) if (towards(k, dtMs, EASE_MS.lit)) { lit = true; busy = busy || k.now !== k.goal; }
+      for (const k of [...Object.values(keep), away]) if (towards(k, dtMs, EASE_MS.lit)) { lit = true; busy = busy || k.now !== k.goal; }
       if (lit) { applyDim(); paintEarned(); }
       if (figures || lit) { paintFigures(); paintSteps(); }
       if (towards(ease.today, dtMs, EASE_MS.today)) busy = busy || ease.today.now !== ease.today.goal;
@@ -990,10 +1232,12 @@ export async function createDome(canvas, { soft = false, after = null, onLost = 
       starsShown: Math.round(starCount * Math.min(1, ease.keep.now)), catalogueFigures: catFigureCount, earned: { stars: earnedStars, lines: earnedLines },
       pixelRatio, renderer: rendererName, lost, dim: U.dim.value, tier, twinkle: ease.twinkle.now, parallax: ease.parallax.now, pointer: ease.pointer.now,
       voice: { level: ease.voice.now, alt: voiceAlt }, ring: ring ? ring.u : null, micLive, maxPoint,
-      today: today ? { ...today } : null, moonLit: ease.today.now, others: U.others.value, kept: PLACES.find((pl) => keep[pl.id].goal === 1)?.id ?? null }),
+      today: today ? { ...today } : null, moonLit: ease.today.now, others: U.others.value, kept: PLACES.find((pl) => keep[pl.id].goal === 1)?.id ?? null,
+      replay: replay ? { ms: replay.ms, calm: replay.calm, columns: replay.cols.length, reveal: replay.mesh.material.uniforms.uReveal.value, alpha: replay.mesh.material.uniforms.uAlpha.value, out: replay.out } : null }),
     destroy() {
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      dropReplay();
       for (const o of [sky, stars, catFigures, ground, lines, figStars, moon]) if (o) { o.geometry.dispose(); o.material.dispose(); }
       moonTex.dispose();
       renderer.dispose();

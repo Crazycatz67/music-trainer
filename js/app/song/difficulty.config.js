@@ -111,4 +111,12 @@ export const DIFFICULTY = Object.freeze({
     // osu!'s rule: a song this much harder costs `upCost` x as much as one as much easier.
     upCost: 2,                                                           // GUESS
   }),
+
+  // Spec 3.4: notes the level does not judge stay on the stage (the singer still sees and hears
+  // the whole tune) but fainter and without their halo, so they can tell which notes count.
+  // The picture is set before the count-in; a level change while stopped cross-fades it.
+  faint: Object.freeze({
+    alpha: 0.4,                                                          // GUESS, tune by eye
+    fadeMs: 200,
+  }),
 });

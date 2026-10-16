@@ -167,7 +167,7 @@ export function mountVoiceCheck(view, {
   view.classList.add('exercise', 'voice-check');
   view.append(
     h('div', { class: 'title-row ex-head' },
-      h('a', { class: 'btn btn-quiet back', href: '#/practice' }, icon('back', 16), ' The Ladder'), heading, stepChip),
+      heading, stepChip),
     arrival, rangeHost, body, resultBox);
 
   const stage = createStage(stageHost, { config });

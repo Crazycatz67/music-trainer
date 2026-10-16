@@ -233,7 +233,6 @@ export function mountRangeFinder(view, {
   view.classList.add('exercise', 'rangefinder');
   view.append(
     h('div', { class: `title-row ex-head${embedded ? ' visually-hidden' : ''}` },
-      embedded ? null : h('a', { class: 'btn btn-quiet back', href: backHref }, icon('back', 16), ' Back'),
       h(embedded ? 'h2' : 'h1', { tabindex: '-1' }, 'Find your range'), stepText),
     doLine, bannerSlot, viewHost, underLine, cardSlot,
     // Try again comes AFTER the main button: arriving before it, it pushed the button 138 px

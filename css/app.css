@@ -90,7 +90,11 @@ h1[tabindex="-1"]:focus-visible, h2[tabindex="-1"]:focus-visible { outline: none
 .mic-bars i:nth-child(1) { transform: scaleY(calc(.25 + .45 * var(--lv, 0))); }
 .mic-bars i:nth-child(3) { transform: scaleY(calc(.25 + .6 * var(--lv, 0))); }
 
-.card { display: block; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-m); padding: var(--s5); box-shadow: var(--shadow-card); color: var(--text); }
+/* One panel look for every card, the round-done cards included (page-layout 3.2): radius, padding,
+   fill and border live only here, so no screen keeps its own. world.css adds the aurora hairline
+   and the panel shadow on the app page; labs that load app.css alone still get the same box. */
+.card, .done-card, .ln-card, .rb-card, .ec-card, .ec-compare { background-color: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); padding: var(--s5); }
+.card { display: block; box-shadow: var(--shadow-card); color: var(--text); }
 .card > * + * { margin-top: var(--s2); }
 .card p { color: var(--muted); }
 .card-link { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); text-decoration: none; transition: border-color var(--d-quick) var(--ease); }
@@ -400,7 +404,7 @@ main > * + * { margin-top: var(--s3); }
 
 /* Slides up over the lower part of the stage; the take stays visible above it. */
 @keyframes card-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
-.done-card { position: absolute; left: var(--s3); right: var(--s3); bottom: var(--s3); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s4); padding: var(--s3) var(--s4); border-radius: var(--r-m); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sheet); animation: card-up var(--d-slow) var(--ease) both; }
+.done-card { position: absolute; left: var(--s3); right: var(--s3); bottom: var(--s3); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s4); box-shadow: var(--shadow-sheet); animation: card-up var(--d-slow) var(--ease) both; }
 .done-card[data-tier="best"] { border-color: var(--gold); box-shadow: var(--shadow-sheet), 0 0 32px var(--gold-glow); }
 .done-top { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
 .done-stars { display: flex; gap: var(--s1); }
@@ -408,7 +412,7 @@ main > * + * { margin-top: var(--s3); }
 .done-card > .action-row { grid-column: 2; grid-row: 1 / span 3; }
 .done-card > p { grid-column: 1; }
 /* Under a short stage (see matchhold.js placeDone): in the page's flow, one compact row. */
-.done-card.is-below { position: static; padding: var(--s2) var(--s4); box-shadow: none; animation: fade-in var(--d-base) var(--ease) both; }
+.done-card.is-below { position: static; box-shadow: none; animation: fade-in var(--d-base) var(--ease) both; }
 /* ...and the reserved line gives its room to the card, so "Again" is on the screen at 640. */
 .exercise.done-below[data-phase="done"] > .ex-under { display: none; }
 .sheet-figure { display: grid; place-items: center; color: var(--accent); }

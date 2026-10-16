@@ -44,6 +44,15 @@
 //                        it (the site opened on its address). fade = the old picture fades
 //                        away over 200 ms on its own layer (from one place to another)
 //   sky.where() -> { state: 'home' | 'going' | 'place' | 'returning', place: id | null }
+//   sky.setCaptionAction({ label, onPress } | null)   the caption's one quiet button (bottom
+//                        right, home only, never in links mode); null hides the caption
+//   sky.replay(cols, words = '') -> boolean   plays takeglow.glowShape(...) cols ONCE on the
+//                        dome and says `words` once in the live region. false (nothing shown,
+//                        nothing said) in links mode, before the dome loads, away from home,
+//                        with the mic live or a take being scored
+//   sky.setFigure(on)    true (default) = inside a place its own figure stays lit; false =
+//                        a STAGE screen: no figure line behind the controls (page-layout S4,
+//                        spec 3.2). Applies to the next travel/openAt and, inside a place, at once
 //   sky.setMicLive(bool) a microphone track is live: the dome draws NOTHING and no
 //                        animation-frame callback stays registered (spec section 9)
 //   sky.setBusy(bool)    a take is being scored: the same
@@ -132,6 +141,12 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
   const first = el('p', { class: 'sky-first' }, FIRST_LINE);
   const hint = el('p', { class: 'sky-hint' });
   const live = el('p', { class: 'visually-hidden sky-live', 'aria-live': 'polite' });
+  // The sky caption (living-sky 4.1): bottom right, one quiet action at most. Hidden by CSS
+  // in links mode and away from home, so it never sits over a screen's controls.
+  const captionBtn = el('button', { class: 'btn btn-secondary btn-small sky-caption-action', type: 'button' });
+  const caption = el('div', { class: 'sky-caption', hidden: '' }, captionBtn);
+  let captionPress = null;
+  captionBtn.addEventListener('click', (e) => captionPress?.(e));
   const startLabel = el('span', { class: 'sky-start-label' });
   // First in the Tab order (Start, then the five places), as spec section 7 lists it.
   const startBtn = el('button', { class: 'btn btn-primary sky-start', type: 'button', hidden: '' }, startLabel, el('kbd', { class: 'keycap' }, 'Space'));
@@ -155,7 +170,7 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
     return { pl, link, state, key: '', phase: 'idle', timer: 0, target: null, transform: '' };
   });
   const todayPill = pills.find((p) => p.pl.id === 'today');
-  root.append(canvas, fade, veil, nav, first, hint, live);
+  root.append(canvas, fade, veil, nav, first, hint, caption, live);
   if (strip) root.append(stripEl);
 
   let resolveReady;
@@ -176,6 +191,8 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
   let main = primary;
   let where = 'home', placeId = null, awayTimer = 0, stripTimer = 0, settle = null;
   let micLive = false, scoring = false, refused = 0;
+  let figure = true;                   // false on stage screens: their place figure is not lit
+  const litFor = (id) => (figure ? id : null);
   let lastInputAt = now(), twinkleOffAt = 0, twinkleOn = false;
   // What the dome is given before it has loaded is kept and handed over when it arrives.
   const held = {};
@@ -358,8 +375,9 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
     lastRafAt = rafT;
     const want = twinkleWanted(t);
     if (want !== twinkleOn) { twinkleOn = want; dome?.setTwinkle(want); if (!want) twinkleOffAt = t; }
-    const alive = twinkleOn || t - twinkleOffAt < TWINKLE_OUT_MS;
-    // Nothing but twinkle to show: every other frame is enough (about 30 a second).
+    // A replay aurora (dome.setReplay) rides the same slow chain; it ends by itself.
+    const alive = twinkleOn || t - twinkleOffAt < TWINKLE_OUT_MS || !!dome?.glowing();
+    // Nothing but twinkle (or the aurora) to show: every other frame is enough (about 30 a second).
     if (!active && !stale && t - lastDrawAt < TWINKLE_GAP_MS) { if (alive) wake(true); else chained = false; return; }
     stale = false;
     active = draw(t);
@@ -410,7 +428,8 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
     root.dataset.away = '';                 // the places and the hint fade out in the first 200 ms
     hoverId = overId = pointerAt = null;
     dome?.setHover(null);
-    dome?.setLit(id);                       // this place's own figure stays lit while the rest dims
+    dome?.setLit(litFor(id), true);         // this place's own figure stays lit while the rest dims
+    dome?.setReplay(null);                  // the aurora fades as the camera leaves (600 ms)
     const ms = turner.travelTo(pl.face, now());
     // The strip fades in over the last 200 ms.
     stripTimer = setTimeout(() => showStrip(pl), Math.max(0, ms - FADE_MS));
@@ -472,7 +491,8 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
     root.dataset.where = where; root.dataset.away = '';
     nav.inert = true;
     showStrip(pl);
-    dome?.setLit(id);
+    dome?.setLit(litFor(id), true);
+    dome?.setReplay(null, { cut: true });    // the picture is replaced at once (or cross-faded) anyway
     draw(now(), { instant: true });
   }
   function press(pl, e) {
@@ -537,7 +557,7 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
       if ('earned' in held) dome.setEarned(held.earned);
       if ('voice' in held) dome.setVoice(held.voice);
       if ('today' in held) dome.setToday(held.today);
-      dome.setLit(where === 'home' ? null : placeId);
+      dome.setLit(where === 'home' ? null : litFor(placeId), where !== 'home');
       dome.resize(vp.w, vp.h);
       if (mode === 'dome') { draw(now(), { instant: true }); wake(); }
       root.dataset.loaded = '';          // the veil over the canvas fades away (600 ms)
@@ -747,6 +767,28 @@ export function createSky(root, { gl = 'auto', calm = null, states = {}, hrefFor
     setPrimary(next) { main = next || null; startLabel.textContent = main?.label || 'Start'; showStart(); resettle(); },
     travelTo, travelBack, openAt,
     where: () => ({ state: where, place: placeId }),
+    setFigure(on) {
+      figure = on !== false;
+      if (!dome || where === 'home' || where === 'returning') return;
+      dome.setLit(litFor(placeId), true);
+      // Inside a place the sky is still (wake() returns early), so the change needs its own frame.
+      if (where === 'place') { if (blockedNow()) stale = true; else draw(now(), { instant: true }); }
+      else wake();
+    },
+    setCaptionAction(a) {
+      captionPress = a?.onPress || null;
+      captionBtn.textContent = a?.label || '';
+      caption.hidden = !a;
+    },
+    // Only at home in dome mode and never with the mic live or a take being scored: the
+    // caller keeps the glow (takeglow.lastGlow) for the caption's "Replay" when this says no.
+    replay(cols, words = '') {
+      if (destroyed || mode !== 'dome' || !dome || where !== 'home' || blockedNow() || !cols?.length) return false;
+      dome.setReplay({ cols, calm: isCalm() });
+      if (words) live.textContent = words;
+      wake();
+      return true;
+    },
     setMicLive(on) { micLive = !!on; dome?.setMicLive(micLive); if (blockedNow()) halt(); else release(); },
     setBusy(on) { scoring = !!on; if (blockedNow()) halt(); else release(); },
     setVoice: relay('voice', (v) => dome.setVoice(v)),

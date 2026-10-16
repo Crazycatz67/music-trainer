@@ -110,8 +110,8 @@ function mountPicker(view, { store, range, notFound }) {
   const begun = first && saved[first.id] && saved[first.id].stars.some(Boolean);
   view.classList.add('constellation');
   view.append(
+    // No Back of its own: the strip's one Back goes to The Ladder (page-layout S2, 3.1).
     h('div', { class: 'title-row' },
-      h('a', { class: 'btn btn-quiet back', href: '#/practice' }, icon('back', 16), ' The Ladder'),
       h('h1', { tabindex: '-1' }, WORDS.name)),
     h('p', { class: 'reason' }, `${WORDS.plain}. ${WORDS.ready}`),
     // The one filled button: the first figure not yet in the sky. The order is advice.
@@ -206,7 +206,7 @@ export function mountConstellation(view, {
   view.classList.add('exercise', 'constellation');
   view.append(
     h('div', { class: 'title-row ex-head' },
-      h('a', { class: 'btn btn-quiet back', href: ROUTE }, icon('back', 16), ' Constellations'),
+      // The strip's Back goes to Constellations (skyroutes backOf); no second one here.
       nameEl, h('p', { class: 'ex-step' }, plainLine(figure)),
       // In the title row, not on the field: there it covered the "8 notes high" chip
       // pinned to the field's top edge (review 3, finding 2; spec section 5).

@@ -10,13 +10,13 @@
    Nothing here animates, and nothing puts opacity, a filter or a backdrop-filter over the dome. */
 
 /* ---- 1. world tokens (decoration only: never put bare text on them) ----------------------
-   S5 (skies) moves these into tokens.css and drops the theme-name test. */
+   Tested by tone (data-tone), not by sky name, so Nebula and Midnight get the dark values. */
 :root,
-[data-theme="dusk"] {
+[data-tone="dark"] {
   --shadow-panel: 0 12px 40px rgba(0, 0, 0, .35);
   --flat-star: color-mix(in srgb, var(--text) 35%, transparent);
 }
-[data-theme="dawn"] {
+[data-tone="light"] {
   --shadow-panel: 0 12px 40px rgba(27, 33, 54, .12);
   --flat-star: color-mix(in srgb, var(--muted) 30%, transparent);
 }
@@ -107,6 +107,14 @@ html:is([data-sky="links"], [data-sky="failed"]):not([data-route="sky"]) main#vi
   padding: var(--s5);
   box-shadow: var(--shadow-panel);
 }
+/* The round-done cards are panels too (app.css gives them the box); they keep their own
+   shadow, since they float over the stage. */
+:is(.done-card, .ln-card, .rb-card, .ec-card, .ec-compare) {
+  background-image: var(--aurora-hairline);
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  background-position: top left;
+}
 /* Figure cards: the picture is the content, so no padding; they keep the radius and hairline. */
 .card.figure-card { padding: 0; }
 
@@ -127,6 +135,16 @@ html:is([data-sky="links"], [data-sky="failed"]):not([data-route="sky"]) main#vi
 }
 .constellation-rule::before { left: 0; }
 .constellation-rule::after { right: 0; }
+/* The same rule drawn as a top edge, for a divider whose markup is not ours to change and
+   whose ::before is taken (the coach card's cents note draws its band key there): the dotted
+   line plus a 4 px dot at each end, all background layers. */
+:root {
+  --rule-top:
+    radial-gradient(circle at 2px 2px, var(--line-strong) 1.5px, transparent 2px) left top / 4px 4px no-repeat,
+    radial-gradient(circle at 2px 2px, var(--line-strong) 1.5px, transparent 2px) right top / 4px 4px no-repeat,
+    radial-gradient(circle, var(--line-strong) 0.5px, transparent 1px) left 0 top 1.5px / 4px 1px repeat-x;
+}
+.coach-cents { border-top: 0; background: var(--rule-top); }
 
 /* ---- 6. star rows: lists on reading screens ------------------------------------------------
    Markup (builders write the words; the star is decoration, the word carries the state):

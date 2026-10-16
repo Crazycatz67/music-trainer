@@ -56,7 +56,7 @@
 //       'mt:route' ({ detail: { route, from } }) once a screen has been drawn,
 //       'mt:busy' ({ detail: { on } }) when setBusy sets or clears the scoring guard.
 
-import { SETTINGS_DEFAULTS } from './config.js';
+import { SETTINGS_DEFAULTS, SKIES, resolveSky } from './config.js';
 import { readOwnVoice } from './ownvoicekey.js';
 import { useOwnVoice } from '../synth.js';
 import { HOME_ROUTE, NUMBER_ROUTES, backOf, namesOf, screenOwnsKey } from './skyroutes.js';
@@ -192,7 +192,9 @@ export function createSettings({ storage, defaults = SETTINGS_DEFAULTS, key = `$
 
 // The browser databases "Erase my data" also removes (settings.erase covers localStorage only).
 // Both open their databases with onversionchange -> close, so a delete here is not blocked by us.
-export const SAVED_DATABASES = Object.freeze([SONG.takes.dbName, SONG.songs.dbName]);
+// My voice's recordings: the name is myvoice.js DB_NAME, written out so every page does not load
+// the voice engine (tools/checks/stage.check.mjs keeps the two equal).
+export const SAVED_DATABASES = Object.freeze([SONG.takes.dbName, SONG.songs.dbName, 'music-trainer.myvoice.v1']);
 export async function eraseSavedDatabases({ indexedDB: idb = globalThis.indexedDB } = {}) {
   if (!idb) return [];
   const gone = await Promise.all(SAVED_DATABASES.map((name) => new Promise((ok) => {
@@ -316,6 +318,49 @@ export function segmented({ label, options, value, onChange }) {
   paint();
   const reasons = options.filter((o) => o.disabled && o.reason).map((o) => h('p', { class: 'reason' }, `${o.text}: ${o.reason}`));
   return h('div', { class: 'field' }, h('span', { class: 'field-label' }, label), group, reasons);
+}
+
+// Settings > Look > Sky (page-layout spec 4.2): a radio group of swatches. Each swatch's picture
+// is a little element carrying that sky's data-theme, so its colours come from tokens.css like
+// the real page (no colour is written here). Arrow keys only move the focus and Space or Enter
+// picks: every pick is a 400 ms cross-fade of the whole window, so arrowing through five skies
+// must not set off five of them.
+export function skyPicker({ value, onChange }) {
+  const group = h('div', { class: 'sky-swatches', role: 'radiogroup', 'aria-label': 'Sky' });
+  const picture = (sky) => sky.tone
+    ? h('span', { class: 'sky-swatch-sky theme-scope', dataset: { theme: sky.id }, 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))
+    : h('span', { class: 'sky-swatch-sky sky-swatch-half', 'aria-hidden': 'true' },
+      h('span', { class: 'theme-scope', dataset: { theme: 'dusk' } }, h('i'), h('i')),
+      h('span', { class: 'theme-scope', dataset: { theme: 'dawn' } }, h('i')));
+  const paint = () => {
+    const known = SKIES.some((s) => s.id === value) ? value : 'system';
+    for (const b of group.children) {
+      const on = b.dataset.value === known;
+      b.setAttribute('aria-checked', on);
+      b.tabIndex = on ? 0 : -1;
+    }
+  };
+  for (const sky of SKIES) {
+    const lineId = `sky-line-${sky.id}`;
+    group.append(h('button', {
+      type: 'button', role: 'radio', class: 'sky-swatch', dataset: { value: sky.id }, title: sky.line, 'aria-describedby': lineId,
+      onclick: () => { if (value === sky.id) return; value = sky.id; paint(); onChange(sky.id); },
+    }, picture(sky), h('span', { class: 'sky-swatch-name' }, sky.name),
+    h('span', { class: 'sky-swatch-chosen' }, icon('tick', 16), 'Chosen'),
+    h('span', { id: lineId, hidden: true }, sky.line)));
+  }
+  group.addEventListener('keydown', (e) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const list = [...group.children], at = list.indexOf(document.activeElement);
+    const next = list[((at < 0 ? 0 : at) + step + list.length) % list.length];
+    for (const b of list) b.tabIndex = b === next ? 0 : -1;
+    next.focus();
+  });
+  group.addEventListener('focusout', (e) => { if (!group.contains(e.relatedTarget)) paint(); });
+  paint();
+  return h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Sky'), group);
 }
 
 export function switchRow({ label, note, value, onChange }) {
@@ -458,21 +503,67 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
   const doc = document.documentElement;
   const view = document.getElementById('view');
   const lightMq = window.matchMedia('(prefers-color-scheme: light)');
+  const contrastMq = window.matchMedia('(prefers-contrast: more)');
   const calmMq = window.matchMedia('(prefers-reduced-motion: reduce)');
   const sections = new Map();
   let headphones = null, guard = null, current = null, currentHash = '', cleanup = null, passOnce = false, firstRender = true;
 
   // ---- theme and calm motion
   const calm = () => settings.get('calm') ?? calmMq.matches;
+  // The pre-paint script in index.html set data-theme and data-tone already, so the first call
+  // only confirms them. A later change of sky (Settings, or the Mac switching dark and light)
+  // must not flash the whole window (STYLE: no full-screen colour change), so it cross-fades.
+  let themeShown = false;
   function applyTheme() {
-    const pick = settings.get('theme');
-    const theme = pick === 'dusk' || pick === 'dawn' ? pick : lightMq.matches ? 'dawn' : 'dusk';
-    if (doc.dataset.theme !== theme) doc.dataset.theme = theme;
-    document.dispatchEvent(new CustomEvent('mt:theme', { detail: { theme } }));
+    const { theme, tone } = resolveSky(settings.get('theme'), { light: lightMq.matches, moreContrast: contrastMq.matches });
+    const swap = () => {
+      doc.dataset.theme = theme;
+      doc.dataset.tone = tone;
+      document.dispatchEvent(new CustomEvent('mt:theme', { detail: { theme, tone } }));
+    };
+    const same = doc.dataset.theme === theme && doc.dataset.tone === tone;
+    // Layout S5: no cross-fade while the microphone is live. The view transition freezes the
+    // page into a snapshot for 400 ms, so the voice line would stop moving under the singer.
+    if (same || !themeShown || micLive()) swap(); else crossFade(swap);
+    themeShown = true;
+  }
+  // Spec 4.3: a 400 ms cross-fade inside a view transition where the browser has one (Chrome
+  // 111+); otherwise main#view fades out over 200 ms, the sky swaps, and it fades back. Calm
+  // motion keeps the fade: a fade is the calm form, a cut would be the flash.
+  function crossFade(swap) {
+    const ease = getComputedStyle(doc).getPropertyValue('--ease').trim() || 'ease';
+    if (typeof document.startViewTransition === 'function') {
+      const vt = document.startViewTransition(swap);
+      vt.ready.then(() => {
+        for (const a of document.getAnimations()) {
+          if (String(a.effect && a.effect.pseudoElement).startsWith('::view-transition')) a.effect.updateTiming({ duration: 400, easing: ease });
+        }
+      }).catch(() => { /* skipped (page hidden): the swap still ran */ });
+      return;
+    }
+    if (!view || !view.animate) { swap(); return; }
+    view.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: ease, fill: 'forwards' }).finished
+      .then(() => { swap(); return view.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: ease }).finished; })
+      .then(() => { for (const a of view.getAnimations()) a.cancel(); }, () => swap());
+  }
+  // Whether the microphone is open. micflow is made after the shell (it takes the shell), so the
+  // shell reads the mic chip micflow paints: role 'good' or 'close' is phase on or checking
+  // (micflow.chipFor); 'quiet' is off and 'error' is blocked.
+  function micLive() {
+    const chip = document.getElementById('mic-chip');
+    return !!chip && (chip.dataset.role === 'good' || chip.dataset.role === 'close');
   }
   function applyCalm() {
     doc.dataset.calm = calm() ? 'on' : 'off';
     document.dispatchEvent(new CustomEvent('mt:calm', { detail: { on: calm() } }));
+  }
+  // Constellation lines (living-sky 2.3 rule 4). On the page, like the aurora: skynow.js reads
+  // data-sky-lines when the home sky starts (it loads after the shell) and follows the event.
+  const skyLines = () => (['all', 'tonight', 'off'].includes(settings.get('skyLines')) ? settings.get('skyLines') : 'all');
+  function applySkyLines() {
+    const mode = skyLines();
+    doc.dataset.skyLines = mode;
+    document.dispatchEvent(new CustomEvent('mt:skylines', { detail: { mode } }));
   }
   // The aurora on the voice line (living-sky spec 6.6). On the page, like calm motion, so the
   // stage and the star field follow it without each screen passing it down.
@@ -482,11 +573,13 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
     document.dispatchEvent(new CustomEvent('mt:aurora', { detail: { on } }));
   }
   lightMq.addEventListener('change', applyTheme);
+  contrastMq.addEventListener('change', applyTheme);
   calmMq.addEventListener('change', applyCalm);
-  settings.subscribe((k) => { if (k === 'theme') applyTheme(); if (k === 'calm') applyCalm(); if (k === 'aurora') applyAurora(); });
+  settings.subscribe((k) => { if (k === 'theme') applyTheme(); if (k === 'calm') applyCalm(); if (k === 'aurora') applyAurora(); if (k === 'skyLines') applySkyLines(); });
   applyTheme();
   applyCalm();
   applyAurora();
+  applySkyLines();
 
   // ---- headphones chip and sheet (the answer lasts for the visit)
   const phonesChip = document.getElementById('headphones-chip');
@@ -565,10 +658,12 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
       body: [
         part('mic', 'Microphone', mic),
         part('theme', 'Look',
-          segmented({ label: 'Theme', value: settings.get('theme'), onChange: (v) => settings.set('theme', v),
-            options: [{ value: 'system', text: 'Follow system' }, { value: 'dusk', text: 'Dusk' }, { value: 'dawn', text: 'Dawn' }] }),
+          skyPicker({ value: settings.get('theme'), onChange: (v) => settings.set('theme', v) }),
           switchRow({ label: 'Calm motion', note: 'Fewer moving effects. Starts on when your Mac asks for reduced motion.',
             value: calm(), onChange: (v) => settings.set('calm', v) }),
+          segmented({ label: 'Constellation lines', value: skyLines(), onChange: (v) => settings.set('skyLines', v),
+            options: [{ value: 'all', text: 'All' }, { value: 'tonight', text: 'Tonight’s only' }, { value: 'off', text: 'Off' }] }),
+          h('p', { class: 'reason' }, 'The faint lines between the real stars on the home sky. Tonight’s only keeps the one constellation picked for tonight.'),
           switchRow({ label: 'Aurora on your voice line', note: 'A soft light above your line. It is tall when you are in tune.',
             value: settings.get('aurora') !== false, onChange: (v) => settings.set('aurora', v) }),
           segmented({ label: 'Pitch view', value: settings.get('pitchView'), onChange: (v) => settings.set('pitchView', v),
@@ -588,7 +683,7 @@ export function initShell({ settings, routes, home = 'today', storage = null }) 
           segmented({ label: 'Reference tone', value: settings.get('tone') === 'mine' && !ownVoice ? 'sung' : settings.get('tone'), onChange: (v) => { settings.set('toneChosen', true); settings.set('tone', v); },
             options: [{ value: 'oohs', text: 'Real voice (oohs)' }, { value: 'sung', text: 'Sung "oo"' }, { value: 'soft', text: 'Soft synth' }, { value: 'voice', text: 'Voice-like' }, { value: 'sine', text: 'Plain' },
               ...(ownVoice ? [{ value: 'mine', text: 'My voice' }] : [])] }),
-          ownVoice ? null : h('p', { class: 'reason settings-myvoice' }, 'My voice: sing one "oo" for a few seconds in Match and hold ("Teach it your voice"), and every exercise can play its notes in your own tone colour. Only the colour is kept, never a recording.'),
+          ownVoice ? null : h('p', { class: 'reason settings-myvoice' }, 'My voice: sing one "oo" for a few seconds in Match and hold ("Teach it your voice"), and every exercise can play its notes in your own tone colour. Your tone colour and up to 3 short recordings stay in this browser only.'),
           h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Reference tone volume'),
             h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(settings.get('toneVolume')),
               oninput: (e) => { settings.set('toneVolume', Number(e.target.value)); sayVolume(); } }), volumeWords),

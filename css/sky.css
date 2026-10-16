@@ -6,13 +6,13 @@
    not edit existing files). They are decoration only: never put bare text on them. */
 
 :root,
-[data-theme="dusk"] {
+[data-tone="dark"] {
   --sky-zenith: #080c18;
   --sky-horizon: #1f2d6b;
   --sky-ground: #05070f;
   --sky-dim: .35;
 }
-[data-theme="dawn"] {
+[data-tone="light"] {
   /* A real early sky (review 6: Dawn read as a blank cream page): pale blue overhead, peach
      at the horizon, hills you can see, and a moon whose lit part is the lightest thing there. */
   --sky-zenith: #dbe5f4;
@@ -163,6 +163,16 @@
   transition: opacity var(--d-slow) var(--ease);
 }
 .sky-first[data-gone] { opacity: 0; }
+
+/* ---- caption (living-sky 4.1): one quiet action, bottom right, home only ------------- */
+.sky-caption {
+  position: absolute; right: var(--s3); bottom: var(--s2); margin: 0;
+  transition: opacity var(--d-base) var(--ease);
+}
+/* Away from home it would sit over a screen's own controls; the plain links have no sky. */
+.sky[data-mode="links"] .sky-caption,
+.sky:not([data-where="home"]) .sky-caption { display: none; }
+.sky[data-away] .sky-caption { opacity: 0; pointer-events: none; }
 
 /* ---- plain links: no WebGL, a narrow window, a lost context ------------------------- */
 /* The same five links in a column on the flat page colour. No message: nothing is broken. */

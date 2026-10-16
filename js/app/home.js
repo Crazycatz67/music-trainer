@@ -40,7 +40,8 @@ import { createSky } from './sky.js';
 import { startSkyNow } from './skynow.js';
 import { earnedSky, TRAVEL, travelMs } from './skymap.js';
 import { parseRoute, sheetOpen } from './shell.js';
-import { HOME_ROUTE, moveFor, placeOf } from './skyroutes.js';
+import { HOME_ROUTE, frameOf, moveFor, placeOf } from './skyroutes.js';
+import { glowShape, glowWords, lastGlow, takeGlow } from './takeglow.js';
 
 const LADDER = ['range', 'matchhold', 'constellation'];   // the Ladder's exercises that exist
 const LADDER_STARS = 6;                                   // one star per exercise, built or not
@@ -76,7 +77,7 @@ export function homeFacts({ plan = [], data = null, today = '' } = {}) {
   };
 }
 
-export function mountHome(root, { shell, sessions, daily, plan, micflow, storage = null, gl = 'auto', startSetup = () => false, onFrame = null } = {}) {
+export function mountHome(root, { shell, sessions, daily, plan, micflow, storage = null, gl = 'auto', lines = undefined, startSetup = () => false, onFrame = null } = {}) {
   const doc = document.documentElement;
   let facts = homeFacts({ plan: plan(), data: sessions.read(), today: sessions.today() });
   let busy = false, destroyed = false, pendingStart = null;
@@ -99,6 +100,8 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
     const target = setup ? 'today' : placeOf(parseRoute(step ? step.route : ''));
     if (!target || sky.mode() !== 'dome' || sky.where().state !== 'home') { act(); return; }
     const mine = (pendingStart = { press });
+    // The glide lands on the step's own screen: a stage keeps its figure dark from the start.
+    sky.setFigure(!step || setup || frameOf(parseRoute(step.route)) !== 'stage');
     sky.travelTo(target).then((ok) => {
       if (pendingStart === mine) pendingStart = null;
       if (destroyed || !ok || !atHome()) { daily.spend(press); return; }   // turned back with Esc, or went elsewhere
@@ -115,14 +118,29 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
     // The address changes at the start of the journey, so the browser's Back works at once.
     onTravel: (pl, e) => { if (sky.mode() === 'dome' && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) shell.navigate(pl.route); },
     onArrive: () => { if (!atHome()) shell.view.querySelector('h1')?.focus({ preventScroll: true }); },
+    onHome: () => arriveHome(),
   });
+
+  // The last take as an aurora (page-layout S4): played once on the first return to the sky
+  // after a take, and again on request from the caption while that take is from today.
+  const playGlow = (g) => !!g && sky.replay(glowShape(g.samples), glowWords(g.samples, g.meta));
+  function arriveHome() {
+    if (destroyed || !atHome()) return;
+    const g = lastGlow();
+    const fresh = !!g && new Date(g.at).toDateString() === new Date().toDateString();
+    sky.setCaptionAction(fresh ? { label: 'Replay your aurora', onPress: () => playGlow(lastGlow()) } : null);
+    // Only take the waiting glow when the sky can show it: before the dome has loaded (links
+    // mode for now) or mid-glide it would be spent unseen. A refusal after that (mic live)
+    // leaves it to the caption.
+    if (sky.mode() === 'dome' && sky.where().state === 'home') playGlow(takeGlow());
+  }
 
   // The real stars over the owner's city (living-sky spec Part 1). This file already loads
   // after the first screen is drawn, and the fetch never blocks: a failed or slow load keeps
   // the made-up sky. Started now so the data usually lands before three.js has drawn a frame.
   let saved = storage;
   try { saved = saved || window.localStorage; } catch { saved = null; }
-  const skyNow = startSkyNow(sky, { storage: saved, atHome });
+  const skyNow = startSkyNow(sky, { storage: saved, atHome, ...(lines === undefined ? {} : { lines }) });
 
   // The Lyre's line 3 while songs are being got ready (index.html feeds it from the song
   // service once Songs has been opened); null puts the usual line back.
@@ -146,13 +164,20 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
     const move = sky.mode() === 'dome' ? moveFor({ to: route, where: state, place }) : 'none';
     moves.push({ to: `${route.name}${route.param ? `/${route.param}` : ''}`, move });
     if (moves.length > 20) moves.shift();
+    // Stage screens (a take, the Open Sky) have no figure line behind their controls (spec 3.2);
+    // reading screens keep it. Set BEFORE the move: #/sing glides in figure-less from the start.
+    sky.setFigure(frameOf(route) !== 'stage');
     if (move === 'glide') sky.travelTo(placeOf(route));
-    else if (move === 'back') sky.travelBack();
+    else if (move === 'back') sky.travelBack();          // onHome -> arriveHome on landing
     else if (move === 'fade') {
       sky.openAt(placeOf(route), { fade: true });
       // The screen fades in with the backdrop (spec section 7, "Other cases").
       shell.view.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'ease-out' });
     }
+    if (route.name === HOME_ROUTE && move !== 'back') arriveHome();
+    // A screen with no place of its own (Settings) leaves the sky at 'home' behind it: the
+    // caption must not sit over that screen's controls.
+    else if (route.name !== HOME_ROUTE) sky.setCaptionAction(null);
   }
 
   const onRoute = (e) => {
@@ -170,7 +195,10 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
   const onMode = () => {
     doc.dataset.sky = sky.mode();
     const route = shell.route();
-    if (route && placeOf(route) && sky.mode() === 'dome' && sky.where().state === 'home') sky.openAt(placeOf(route));
+    if (route && placeOf(route) && sky.mode() === 'dome' && sky.where().state === 'home') {
+      sky.setFigure(frameOf(route) !== 'stage');
+      sky.openAt(placeOf(route));
+    }
   };
   // A Start glide has no address of its own yet: Esc turns it round here (the shell's Esc
   // only knows screens). The press itself is spent by daily.js on ANY Esc, glide or not
@@ -191,7 +219,7 @@ export function mountHome(root, { shell, sessions, daily, plan, micflow, storage
   refresh();
   // Also: opened on a screen's own address, the dome starts dim and still, facing its place.
   onMode();
-  sky.ready.then(() => { if (!destroyed) onMode(); });
+  sky.ready.then(() => { if (!destroyed) { onMode(); arriveHome(); } });
 
   return {
     sky, refresh, setSongsLine,

@@ -1,4 +1,4 @@
-/* singnow.css — the standalone "Sing a song" page (sing.html, js/app/singnow.js).
+/* singnow.css — the Songs screen (index.html#/songs and #/songs/<id>, js/app/singnow.js).
    Colours, type and spacing come from tokens.css; buttons, chips, cards, sheets and fields
    from app.css. Only what this page adds is here. Motion is eased and nothing flashes: the
    one loop is the recording dot's slow breath (song-mode spec 7.2).
@@ -13,25 +13,29 @@
   --rec-ink: #2a0606;
   --rec-wash: color-mix(in srgb, var(--rec) 22%, transparent);
 }
-:root[data-theme="dawn"] { --rec: #c81e1e; --rec-ink: #fff5f5; }
+:root[data-tone="light"] { --rec: #c81e1e; --rec-ink: #fff5f5; }
 
-.singnow-page .topbar { gap: var(--s4); }
-.singnow-place { color: var(--muted); font: var(--t-small); }
-.singnow-page .topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--s2); }
-#sing-root { max-width: 1280px; }
-#sing-root section > * + * { margin-top: var(--s3); }
+/* The column comes from main#view[data-frame] (world.css): reading 960 for the library,
+   stage 1280 for an open song. These were #sing-root rules on the old page; #view keeps their
+   id weight so they still beat app.css's per-element margins. */
+#view .sn-library > * + *, #view .sn-sing section > * + * { margin-top: var(--s3); }
 .sn-error { color: var(--error); }
 
 /* ---- library */
 .sn-drop {
   display: grid; justify-items: center; gap: var(--s2); padding: var(--s6) var(--s4);
-  border: 2px dashed var(--line-strong); border-radius: var(--r-m, 12px); background: var(--surface);
+  /* The drop panel wears the sky-panel kit (world.css 4: --surface, --r-l, aurora hairline,
+     panel shadow) but keeps its dashed edge: the dash is what says "drop here". */
+  border: 2px dashed var(--line-strong); border-radius: var(--r-l, 16px);
+  background-color: var(--surface); background-image: var(--aurora-hairline, none);
+  background-repeat: no-repeat; background-size: 100% 1px; background-position: top left;
+  box-shadow: var(--shadow-panel, none);
   text-align: center; cursor: pointer; transition: border-color var(--d-base) var(--ease), background var(--d-base) var(--ease);
 }
 .sn-drop p, .sn-drop h2 { margin: 0; }
 .sn-drop-title { font: var(--t-h1); }
 .sn-drop > svg { color: var(--target); }
-.sn-drop.is-over { border-style: solid; border-color: var(--accent); background: var(--accent-wash); }
+.sn-drop.is-over { border-style: solid; border-color: var(--accent); background-color: var(--accent-wash); }
 .sn-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sn-drop.is-small { padding: var(--s3) var(--s4); grid-template-columns: auto auto auto 1fr; justify-items: start; align-items: center; text-align: left; column-gap: var(--s4); }
 .sn-drop.is-small > svg { width: 28px; height: 28px; }
@@ -40,22 +44,48 @@
 
 .sn-need h2 { margin: 0; }
 .sn-need progress, .sn-job progress { width: 100%; accent-color: var(--accent); }
-.sn-queue, .sn-songs, .sn-takes, .sn-look-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.sn-queue, .sn-takes, .sn-look-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
 .sn-job { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(80px, 1fr) auto auto; align-items: center; gap: var(--s3); }
 .sn-job strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sn-song { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s4); }
+/* My songs: one sky panel (ul.card) of star rows (world.css 6). A song row carries more than a
+   step row (facts, best, buttons, takes), so it wraps: star · name · state word · buttons on
+   the first line, the takes on their own full-width line under it. */
+.sn-songs { padding-block: var(--s2); }
+.sn-songs[hidden] { display: none; }
+.sn-song.star-row { flex-wrap: wrap; column-gap: var(--s3); row-gap: var(--s2); padding-block: var(--s3); }
+.sn-song.star-row > .star-mark { align-self: flex-start; margin-top: 4px; }
 .sn-song-main { display: grid; gap: 2px; min-width: 0; }
+.sn-song > .action-row { flex: 0 0 auto; margin: 0; }
 .sn-song-title { font: var(--t-h2); overflow: hidden; text-overflow: ellipsis; }
 .sn-song-artist { color: var(--muted); }
-.sn-takes { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: var(--s2); }
+.sn-takes { flex: 1 0 100%; padding-left: calc(20px + var(--s3)); }
 .sn-take { display: flex; align-items: center; gap: var(--s3); }
 .sn-take > span { flex: 1; color: var(--muted); font: var(--t-small); }
 
 /* ---- sing screen: one column; the stage takes what the window has left (see .sn-stage) */
 .sn-sing:not([hidden]) { display: grid; grid-template-rows: auto; gap: var(--s2); grid-auto-rows: auto; align-content: start; }
-#sing-root .sn-sing > * { margin-top: 0; }
 .sn-sing .title-row h1 { margin: 0; font: var(--t-h2); outline: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sn-artist { white-space: nowrap; }
+/* The song plate (difficulty spec 3.2): title, then artist · rating, then the fit line. */
+.sn-sing .title-row { align-items: flex-start; }
+.sn-plate { display: grid; gap: 0; min-width: 0; }
+.sn-plate-a, .sn-plate-b { margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 0; row-gap: 2px; min-height: 20px; font: var(--t-small); color: var(--muted); }
+.sn-plate-rating, .sn-plate-fit { display: inline-flex; align-items: center; white-space: pre; }
+.sn-hardest { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.sn-practise-hard { margin-left: var(--s2); min-height: 0; padding-block: 0; }
+.sn-practise-hard[hidden] { display: none; }
+/* Difficulty marks (difficulty-view.js). Never gold, never accent: the treads are --muted,
+   their outlines --line-strong (3:1 or more on every surface, both themes; spec 6). */
+.dv-rating, .dv-fit { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; vertical-align: middle; }
+.dv-steps, .dv-fit-icon { display: inline-flex; color: var(--muted); }
+.dv-steps svg, .dv-fit-icon svg { display: block; }
+.dv-num { font-family: var(--font-num); font-size: .875rem; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.dv-word, .dv-fit { color: var(--muted); font-weight: 400; }
+.dv-fit-link { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.dv-fit-link:hover { color: var(--text); }
+.sn-facts { display: inline; }
+.sn-chip.dv-next { display: inline-flex; align-items: center; gap: 2px; padding: 2px var(--s2) 2px var(--s3); border-radius: 999px; background: var(--raised); color: var(--text); font: var(--t-small); font-weight: 600; }
+.sn-chip.dv-next .icon { color: var(--muted); }
 
 /* The prompt box ("Your turn", "Rest", "Get ready"). Owner 2026-10-13: it "keeps shifting
    around ... flashing and distracting". Its box is ONE size whatever it says (a fixed width
@@ -81,9 +111,10 @@
    window gets the smallest stage, never a hidden row; with the strip showing that floor is
    152 px, not 176, or the sticky music row lies over the scrub bar at 1024 x 640.
    A new row on this screen must add its height to these three numbers. */
-.sn-stage { --stage-h: clamp(176px, calc(100vh - 620px), 420px); --end-h: 216px; position: relative; height: var(--stage-h); border-radius: var(--r-m, 12px); overflow: hidden; background: var(--stage); transition: box-shadow var(--d-slow) var(--ease); }
-.sn-sing:has(> .sn-auto[data-kind="none"]:not([hidden])) .sn-stage, .sn-sing:has(> .sn-auto[data-kind="looking"]:not([hidden])) .sn-stage { --stage-h: clamp(152px, calc(100vh - 684px), 420px); }
-.sn-sing:has(.sn-review:not([hidden])) .sn-stage { --stage-h: clamp(160px, calc(100vh - 746px), 420px); }
+/* Heights subtract the 48 px strip (page-layout S3; was the 56 px top bar of sing.html). */
+.sn-stage { --stage-h: clamp(176px, calc(100vh - 632px), 420px); --end-h: 216px; position: relative; height: var(--stage-h); border-radius: var(--r-m, 12px); overflow: hidden; background: var(--stage); transition: box-shadow var(--d-slow) var(--ease); }
+.sn-sing:has(> .sn-auto[data-kind="none"]:not([hidden])) .sn-stage, .sn-sing:has(> .sn-auto[data-kind="looking"]:not([hidden])) .sn-stage { --stage-h: clamp(152px, calc(100vh - 696px), 420px); }
+.sn-sing:has(.sn-review:not([hidden])) .sn-stage { --stage-h: clamp(160px, calc(100vh - 758px), 420px); }
 /* The picture keeps role="img"; the end panel beside it is a region with real buttons. */
 .sn-stage-pic { position: absolute; inset: 0; transition: opacity var(--d-slow) var(--ease); }
 .sn-canvas { display: block; width: 100%; height: 100%; }
@@ -182,7 +213,12 @@
 .sn-scrub-head { position: absolute; top: 4px; width: 4px; height: 32px; margin-left: -2px; border-radius: 2px; background: var(--text); pointer-events: none; }
 .sn-scrub-head::after { content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--text); }
 
-.sn-transport { justify-content: center; position: sticky; bottom: 0; background: var(--bg); padding: var(--s2) 0; }
+/* The transport plate (page-layout 3.2): --bg at 92 % with the aurora hairline on its top
+   edge, so the sky shows faintly through the gutter strip while the buttons (on --raised)
+   still read. */
+.sn-transport { justify-content: center; position: sticky; bottom: 0; padding: var(--s2) 0;
+  background-color: color-mix(in srgb, var(--bg) 92%, transparent); background-image: var(--aurora-hairline, none);
+  background-repeat: no-repeat; background-size: 100% 1px; background-position: top left; }
 .sn-transport .btn[hidden] { display: none; }
 .sn-gap { flex: 0 1 var(--s6); }
 .sn-primary { min-width: 220px; justify-content: center; }
@@ -351,7 +387,7 @@
 .sn-star svg[width="6"] { width: 9px; height: 9px; }
 .sn-end-best svg { width: 22px; height: 22px; margin: -4px; }
 /* A filled star carries a little light on the dark sky (Dawn's pale page would only smear it). */
-:root:not([data-theme="dawn"]) .sn-star[data-level="with"] svg, :root:not([data-theme="dawn"]) .sn-line-pop[data-level="with"] svg { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--gold-fill) 75%, transparent)); }
+:root:not([data-tone="light"]) .sn-star[data-level="with"] svg, :root:not([data-tone="light"]) .sn-line-pop[data-level="with"] svg { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--gold-fill) 75%, transparent)); }
 /* The star that lands beside the words: centred on the progress marker's line, just past its
    right end, where the eye already is when a line finishes. */
 .sn-line-pop { position: absolute; left: 50%; top: 56px; margin: -17px 0 0 calc(min(640px, 80%) / 2 + 4px); width: 34px; height: 34px; line-height: 0; opacity: 0; pointer-events: none; }
@@ -403,9 +439,9 @@
 .sn-streak::before { content: ""; position: absolute; inset: -4px 0 -4px 25%; border-radius: 5px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold-fill) 50%, transparent)); filter: blur(3px); }
 .sn-streak i { position: absolute; right: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--voice-core); box-shadow: 0 0 6px 2px var(--gold-fill), 0 0 22px 7px color-mix(in srgb, var(--gold-fill) 55%, transparent); }
 /* Dawn: light cannot glow on a pale page, so the star is ink: a darker tail and a ringed head. */
-[data-theme="dawn"] .sn-streak { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 70%, transparent) 55%, var(--gold)); }
-[data-theme="dawn"] .sn-streak::before { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold-fill) 70%, transparent)); }
-[data-theme="dawn"] .sn-streak i { background: var(--gold-fill); box-shadow: 0 0 0 1.5px var(--gold), 0 0 14px 4px color-mix(in srgb, var(--gold-fill) 60%, transparent); }
+[data-tone="light"] .sn-streak { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 70%, transparent) 55%, var(--gold)); }
+[data-tone="light"] .sn-streak::before { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold-fill) 70%, transparent)); }
+[data-tone="light"] .sn-streak i { background: var(--gold-fill); box-shadow: 0 0 0 1.5px var(--gold), 0 0 14px 4px color-mix(in srgb, var(--gold-fill) 60%, transparent); }
 /* Calm motion: a star appears in place with a short fade; nothing lands, flies or swells (singnow.js). */
 [data-calm="on"] .sn-star { animation-duration: 200ms; animation-timing-function: linear; }
 
@@ -423,3 +459,19 @@
   .sn-end:has(#sn-end-again) .sn-end-actions { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
   .sn-end-words:not(.is-say) { display: none; }
 }
+
+/* The level switch (difficulty spec 4.4): the shell's segmented control, small, after
+   "Practise it". The thumb slides 200 ms; the rating and description cross-fade 200 ms. */
+.sn-level { display: inline-grid; margin-left: var(--s2); padding: 2px; vertical-align: middle; }
+.sn-level[hidden], .sn-level .segment[hidden], .sn-level-key[hidden], .sn-level-words[hidden] { display: none; }
+.sn-level::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--n, 2)); transition-duration: 200ms; }
+.sn-level .segment { min-height: 28px; padding: 0 var(--s2); }
+.sn-level .segment:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.sn-level.is-locked .segment { color: var(--quiet); cursor: default; }
+.sn-level-key { margin-left: var(--s1, 4px); }
+.sn-level-words { margin: 0; font: var(--t-small); }
+.sn-plate.is-level-fade .sn-plate-rating, .sn-plate.is-level-fade .sn-level-words { animation: sn-level-fade 200ms var(--ease, ease-out); }
+@keyframes sn-level-fade { from { opacity: 0.25; } to { opacity: 1; } }
+[data-calm="on"] .sn-level::before { transition-duration: 0s; }
+[data-calm="on"] .sn-plate.is-level-fade .sn-plate-rating, [data-calm="on"] .sn-plate.is-level-fade .sn-level-words { animation: none; }
+@media (prefers-reduced-motion: reduce) { .sn-level::before { transition-duration: 0s; } .sn-plate.is-level-fade * { animation: none; } }

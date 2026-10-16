@@ -51,7 +51,7 @@ body[data-tour] .sky-first { display: none; }
 .tour-star[data-state="asleep"] { opacity: 0.6; animation: tour-breathe var(--d-breathe) ease-in-out infinite alternate; }
 .tour-star[data-state="awake"] .tour-halo { fill: var(--gold-glow); }
 .tour-star[data-state="awake"] svg { animation: tour-bloom 600ms var(--ease) 1; }
-[data-theme="dawn"] .tour-core { stroke: var(--gold-ink); stroke-width: 1px; }
+[data-tone="light"] .tour-core { stroke: var(--gold-ink); stroke-width: 1px; }
 .tour-star-name { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: var(--t-small); color: var(--text); }
 
 /* Step 2: the lane with the target line and its band. */

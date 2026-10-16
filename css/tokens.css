@@ -1,13 +1,25 @@
 /* tokens.css — the "Night sky" tokens from docs/design/STYLE.md. The ONLY file that may hold
    a raw colour value; screens and canvas code use the names.
 
-   Theme is data-theme="dusk" | "dawn". index.html always sets it on <html> (from the saved
-   choice or the system setting), so there is one definition of each theme here and no
-   media-query copy to drift. Any element may also carry data-theme to show the other theme
-   inside the page (the stage lab puts the two side by side); give it class "theme-scope"
-   so its own background and text colour follow. */
+   A theme is a sky: data-theme="dusk" | "dawn" | "nebula" | "midnight" (page-layout spec,
+   section 4), plus its tone, data-tone="dark" | "light". index.html always sets both on <html>
+   (from the saved choice or the system setting), so there is one definition of each sky here
+   and no media-query copy to drift. Any element may also carry data-theme to show another sky
+   inside the page (the stage lab puts them side by side); give it class "theme-scope" so its
+   own background and text colour follow.
 
+   This is the only file that tests a sky's NAME. Everything else that differs by light or dark
+   tests [data-tone="light"] (or :not([data-tone="light"]), so a page that set no tone is dark),
+   so a new sky never falls into another sky's rules.
+
+   The role colours (good, close, off, target, gold, silver, error, aurora) belong to the tone,
+   not the sky: "in tune" looks the same under every sky. So each tone's block below lists every
+   token, and a sky block after it overrides only its surfaces, text, lines, accent and dome. */
+
+/* Dark tone (Dusk is its sky; Nebula and Midnight take these role colours). */
 :root,
+[data-theme="nebula"],
+[data-theme="midnight"],
 [data-theme="dusk"] {
   color-scheme: dark;
   --bg: #0b1020;
@@ -58,6 +70,7 @@
   --meteor: #eef2ff;
 }
 
+/* Light tone (Dawn is its only sky). */
 [data-theme="dawn"] {
   color-scheme: light;
   --bg: #f7f5ef;
@@ -104,6 +117,51 @@
   --aurora-off: #ec4899;
   --voice-core: #ffffff;
   --meteor: #55607a;
+}
+
+
+/* The extra dark skies (spec 4.2; contrast checked by tools/checks/themes.check.mjs). The
+   selector is :root/.theme-scope + name so it outranks the :root dome and world defaults in
+   sky.css and world.css, which load later and only know the two tones (data-tone). */
+:root[data-theme="nebula"],
+.theme-scope[data-theme="nebula"] {
+  /* Nebula: a violet night. */
+  --bg: #120b22;
+  --surface: #1d1434;
+  --raised: #281d46;
+  --stage: #0c0718;
+  --stage-top: #1a1033;
+  --text: #f3eeff;
+  --muted: #bdb1dc;
+  --quiet: #9184b8;
+  --line: #3a2d5c;
+  --line-strong: #8170b0;
+  --accent: #5cc8ff;
+  --accent-ink: #06202c;
+  /* The one role exception: the same hue lifted, so a violet band stands off a violet stage. */
+  --target: #c4b5fd;
+  --sky-zenith: #0c0718;
+  --sky-horizon: #3a1d5c;
+  --sky-ground: #07040e;
+}
+:root[data-theme="midnight"],
+.theme-scope[data-theme="midnight"] {
+  /* Midnight: black, the strongest contrast. Hairlines carry the card edges (no shadows). */
+  --bg: #000000;
+  --surface: #0d0f17;
+  --raised: #191c28;
+  --stage: #000000;
+  --stage-top: #05081a;
+  --text: #ffffff;
+  --muted: #c9d1ea;
+  --quiet: #a3aed0;
+  --line: #3a4260;
+  --line-strong: #8b97c4;
+  --accent: #5cc8ff;
+  --accent-ink: #06202c;
+  --sky-zenith: #000000;
+  --sky-horizon: #0a1330;
+  --sky-ground: #000000;
 }
 
 :root {
@@ -156,3 +214,19 @@
 }
 
 .theme-scope { background: var(--bg); color: var(--text); }
+
+/* Settings > Look > Sky swatches (spec 4.2). Kept here, not in app.css, because a swatch is
+   nothing but a sky's tokens drawn small: its picture carries that sky's data-theme. */
+.sky-swatches { display: flex; flex-wrap: wrap; gap: var(--s3); }
+.sky-swatch { display: grid; justify-items: start; gap: var(--s1); padding: 0; border: 0; background: none; color: var(--text); font: var(--t-small); font-weight: 600; text-align: left; cursor: pointer; }
+.sky-swatch-sky { position: relative; display: block; width: 104px; height: 64px; border-radius: var(--r-m); border: 1px solid var(--line); overflow: hidden; background: linear-gradient(to bottom, var(--sky-zenith), var(--sky-horizon)); }
+.sky-swatch-sky i { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: var(--text); }
+.sky-swatch-sky i:nth-of-type(1) { left: 22%; top: 24%; }
+.sky-swatch-sky i:nth-of-type(2) { left: 58%; top: 16%; width: 2px; height: 2px; }
+.sky-swatch-sky i:nth-of-type(3) { left: 78%; top: 44%; }
+.sky-swatch-half { display: flex; background: none; }
+.sky-swatch-half > span { position: relative; flex: 1; background: linear-gradient(to bottom, var(--sky-zenith), var(--sky-horizon)); }
+.sky-swatch[aria-checked="true"] .sky-swatch-sky { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sky-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--r-m); }
+.sky-swatch-chosen { display: none; align-items: center; gap: 2px; color: var(--muted); font: var(--t-tiny); }
+.sky-swatch[aria-checked="true"] .sky-swatch-chosen { display: inline-flex; }

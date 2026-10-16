@@ -102,7 +102,6 @@ export function mountLongNote(view, {
   view.classList.add('exercise', 'long-note');
   view.append(
     h('div', { class: 'title-row ex-head' },
-      h('a', { class: 'btn btn-quiet back', href: '#/practice' }, icon('back', 16), ' Back'),
       h('h1', { tabindex: '-1' }, 'Long note'), stepText, bestLine),
     h('p', { class: 'reason' }, WORDS.what, ' ', h('span', { class: 'ln-safety' }, WORDS.safety)),
     bannerSlot, viewHost, underLine, cardSlot,

@@ -59,6 +59,7 @@ import { displayNote, segmentRuns } from './stage.js';
 import { createRecorder } from './song/recorder.js';
 import { peakOf } from './song/pcm.js';
 import { createTakeStore, idbBackend } from './song/takes.js';
+import { glowSamples, keepGlow } from './takeglow.js';
 
 // ---------------------------------------------------------------- pure
 
@@ -217,7 +218,7 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
   const bannerSlot = h('div');
   const viewHost = h('div');
   view.append(
-    h('div', { class: 'title-row' }, h('a', { class: 'btn btn-quiet back', href: '#/today' }, icon('back', 16), ' Back'), h('h1', { tabindex: '-1' }, 'Free sing')),
+    h('div', { class: 'title-row' }, h('h1', { tabindex: '-1' }, 'Free sing')),
     bannerSlot, viewHost, factsLine,
     h('div', { class: 'action-row' }, h('div', { class: 'action-main' }, primary, stopBtn, primaryWhy), aimBtn, aimLine, playBtn, watchBtn, saveBtn, saveWhy, soundLine),
     aimPanel);
@@ -394,6 +395,9 @@ export function mountFreeSing(view, { shell, micflow, settings, config = CONFIG,
     shell.setBusy(null);
     pv.stage.stop();
     const all = pv.stage.points();
+    // The home replays this as an aurora on the next return (page-layout S4); under 3 s of
+    // pitched singing glowSamples says null and nothing is kept.
+    keepGlow(glowSamples(all), { free: true });
     const pts = trimTake(all, F.keepTakeSec);
     facts = takeFacts(pts, config);
     take = facts ? pts : null;

@@ -64,6 +64,12 @@
 //                            'mine' -> { envelope } (the singer's own tone colour), taken from
 //                            `envelope` when given, else from the useOwnVoice source; 'sung'
 //                            when there is none or it is not playable.
+//                            With recordings (useOwnRecordings) 'mine' is { recordings, envelope? }:
+//                            renderTone plays the singer's own recorded voice moved by PSOLA
+//                            (js/psola.js, "My voice" v3); a note further than MAX_SHIFT from
+//                            every take, a glide or a vibrato falls back to the envelope, else 'sung'.
+//   useOwnRecordings(source) -> source: () => [{ rate, hz, data }] | null, asked at each
+//                            timbreFor('mine') (js/app/ownvoice.js wires js/app/myvoice.js).
 //   useOwnVoice(source)   -> source: () => envelope | null, asked at each timbreFor('mine')
 //                            (shell.js reads the saved record, js/app/ownvoicekey.js). So a new
 //                            capture, an erase or a restore is heard on the next note.
@@ -83,6 +89,7 @@
 
 import { hzToMidi, midiToHz } from './notes.js';
 import { SAMPLE_SETS, renderSample, loadSampleBank } from './samples.js';
+import { renderRecorded } from './psola.js';
 
 export const TIMBRES = Object.freeze({
   sine: Object.freeze([1]),
@@ -143,10 +150,16 @@ function wantOohs() {
 
 let ownSource = () => null;
 export function useOwnVoice(source) { ownSource = typeof source === 'function' ? source : () => null; }
+let ownRecordings = () => null;
+export function useOwnRecordings(source) { ownRecordings = typeof source === 'function' ? source : () => null; }
 export function timbreFor(tone, envelope) {
   if (tone === 'mine') {
     let e = envelope;
     if (e === undefined) { try { e = ownSource(); } catch { e = null; } }
+    let recordings = null;
+    try { recordings = ownRecordings(); } catch { recordings = null; }
+    // v3: the singer's own recorded voice first; the envelope rides along as its fallback.
+    if (Array.isArray(recordings) && recordings.length) return envelopeOk(e) ? { recordings, envelope: e } : { recordings };
     // Without a record "My voice" falls back to the sung "oo", the default.
     return envelopeOk(e) ? { envelope: e } : 'sung';
   }
@@ -186,7 +199,9 @@ function resolve(options = {}) {
   const dur = options.dur ?? 1;
   if (!(dur > 0)) throw new RangeError(`synth: dur must be > 0, got ${dur}`);
   // 'oohs' resolves as 'voice': its fallback, and the same steady pitch for pitchAt.
-  const timbre = options.timbre === 'oohs' ? 'voice' : options.timbre ?? 'voice';
+  let timbre = options.timbre === 'oohs' ? 'voice' : options.timbre ?? 'voice';
+  // { recordings }: out of PSOLA's reach (or a glide), so the envelope, else the sung "oo".
+  if (timbre && typeof timbre === 'object' && !Array.isArray(timbre) && timbre.recordings) timbre = envelopeOk(timbre.envelope) ? { envelope: timbre.envelope } : 'sung';
   // { envelope }: the singer's own tone colour ("My voice"), played by the sung renderer.
   const own = timbre && typeof timbre === 'object' && !Array.isArray(timbre) ? timbre : null;
   if (own && !envelopeOk(own.envelope)) throw new RangeError('synth: an own-voice timbre needs an envelope of [hz, dB] pairs');
@@ -246,6 +261,11 @@ export function pitchAt(options, t) {
 }
 
 export function renderTone(options) {
+  const t = options && options.timbre;
+  if (t && typeof t === 'object' && !Array.isArray(t) && t.recordings && options.glideTo == null && !options.vibrato) {
+    const real = renderRecorded({ ...options, recordings: t.recordings });
+    if (real) return real;
+  }
   if (options && options.timbre === 'oohs' && options.glideTo == null && !options.vibrato) {
     const bank = options.bank ?? oohsBank;
     const real = bank ? renderSample({ ...options, bank, release: options.release ?? 0.2, attack: options.attack ?? 0.06 }) : null;

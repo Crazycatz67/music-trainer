@@ -82,7 +82,6 @@ export function mountRibbonScreen(view, {
   view.classList.add('exercise', 'ribbon-ex', `${kind}-ex`);
   view.append(
     h('div', { class: 'title-row ex-head' },
-      h('a', { class: 'btn btn-quiet back', href: '#/practice' }, icon('back', 16), ' Back'),
       h('h1', { tabindex: '-1' }, W.name), stepText, tray),
     h('p', { class: 'reason' }, W.what, ' ', h('span', { class: 'rb-safety' }, WORDS.safety)),
     fitLine, bannerSlot, viewHost, underLine, cardSlot,
